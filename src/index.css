@@ -43,7 +43,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .site-shell { min-height: 100vh; overflow: hidden; background: #f7f8f6; }
 .topbar { position: relative; z-index: 20; border-bottom: 1px solid rgba(34,39,43,.08); background: rgba(247,248,246,.9); backdrop-filter: blur(18px); }
 .topbar-inner { display: flex; min-height: 84px; align-items: center; justify-content: space-between; gap: 28px; }
-.brand { font-size: 30px; font-weight: 750; letter-spacing: -.07em; color: #22272b; }
+.brand { font-size: 27px; font-weight: 750; letter-spacing: -.065em; white-space: nowrap; color: #22272b; }
 .brand span, .hero h1 em span { color: #15806e; }
 .hero-nav { display: flex; align-items: center; gap: 28px; font-size: 13px; font-weight: 600; color: rgba(34,39,43,.62); }
 .hero-nav a { transition: color .2s ease; }
@@ -58,7 +58,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .hero-copy { position: relative; z-index: 3; }
 .eyebrow { display: flex; align-items: center; gap: 12px; font-size: 11px; font-weight: 750; letter-spacing: .18em; text-transform: uppercase; color: #15806e; }
 .eyebrow span { width: 30px; height: 1px; background: #15806e; }
-.hero h1 { margin: 25px 0 0; font-size: clamp(68px,9vw,132px); font-weight: 720; line-height: .79; letter-spacing: -.075em; color: #22272b; }
+.hero h1 { margin: 25px 0 0; font-size: clamp(62px,7.6vw,108px); font-weight: 720; line-height: .82; letter-spacing: -.07em; color: #22272b; }
 .hero h1 em { font-family: Caveat, cursive; font-style: normal; font-weight: 600; letter-spacing: -.055em; }
 .hero-lead { max-width: 600px; margin: 32px 0 0; font-size: clamp(17px,1.55vw,22px); line-height: 1.65; color: rgba(34,39,43,.7); }
 .hero-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 13px; margin-top: 34px; }
@@ -98,10 +98,10 @@ button, a { -webkit-tap-highlight-color: transparent; }
 
 @media (max-width: 640px) {
   .topbar-inner { min-height: 70px; }
-  .brand { font-size: 26px; }
+  .brand { font-size: 23px; }
   .mini-cta { padding: 11px 16px; }
   .hero-grid { padding-top: 42px; padding-bottom: 58px; }
-  .hero h1 { font-size: clamp(66px, 25vw, 102px); }
+  .hero h1 { font-size: clamp(56px, 17vw, 84px); }
   .hero-lead { margin-top: 25px; font-size: 16px; }
   .hero-buttons { align-items: stretch; }
   .primary-cta, .secondary-cta { width: 100%; }
@@ -162,7 +162,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .service-card button svg { color: #15806e; }
 
 .calculator { position: relative; overflow: hidden; background: #15806e; }
-.calculator::before { content: "Чисто."; position: absolute; right: -38px; top: 24px; font-family: Caveat,cursive; font-size: 190px; font-weight: 600; line-height: 1; color: rgba(255,255,255,.055); }
+.calculator::before { content: "По чистоте."; position: absolute; right: -38px; top: 24px; font-family: Caveat,cursive; font-size: 170px; font-weight: 600; line-height: 1; color: rgba(255,255,255,.055); }
 .calculator-wrap { position: relative; z-index: 1; display: grid; grid-template-columns: .75fr 1.25fr; gap: clamp(42px,7vw,92px); align-items: start; }
 .calculator-head { position: sticky; top: 40px; }
 .calculator-head h2 { color: #fff; }

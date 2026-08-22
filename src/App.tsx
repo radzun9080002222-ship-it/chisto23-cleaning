@@ -57,8 +57,8 @@ const money = (value: number) => `${value.toLocaleString("ru-RU")} ₽`;
 
 function Logo() {
   return (
-    <a href="#top" className="brand" aria-label="Чисто — на главную">
-      Чисто<span>.</span>
+    <a href="#top" className="brand" aria-label="По чистоте — на главную">
+      По чистоте<span>.</span>
     </a>
   );
 }
@@ -113,8 +113,8 @@ export default function App() {
             <div className="hero-copy">
               <div className="eyebrow"><span /> Химчистка мебели в Сочи на дому</div>
               <h1 id="hero-title">
-                Снова<br />
-                <em>Чисто<span>.</span></em>
+                Дома —<br />
+                <em>по чистоте<span>.</span></em>
               </h1>
               <p className="hero-lead">
                 Возвращаем диванам, матрасам и креслам свежесть — без вывоза,
@@ -138,7 +138,7 @@ export default function App() {
 
             <div className="hero-visual">
               <div className="photo-frame">
-                <img src="/images/hero.jpg" alt="Чистый светлый диван после химчистки" />
+                <img src="/images/hero-po-chistote.jpg" alt="Светлый диван после профессиональной химчистки на дому" />
                 <div className="photo-badge">
                   <span className="status-dot" />
                   <div><strong>Можно сегодня</strong><small>ответим за 5 минут</small></div>
@@ -209,7 +209,7 @@ export default function App() {
           <div className="container-x calculator-wrap">
             <div className="calculator-head">
               <div className="section-kicker light">Калькулятор</div>
-              <h2>Сколько будет стоить<br />снова <em>Чисто<span>.</span></em></h2>
+              <h2>Сколько стоит привести<br />всё <em>по чистоте<span>.</span></em></h2>
               <p>Выберите мебель. Это предварительный расчёт — итог подтвердим по фото до выезда мастера.</p>
             </div>
             <div className="calculator-panel">
@@ -246,24 +246,24 @@ export default function App() {
             <div className="section-heading">
               <div>
                 <div className="section-kicker">Результат</div>
-                <h2>До. После. <em>Чисто<span>.</span></em></h2>
+                <h2>До. После. <em>По чистоте<span>.</span></em></h2>
               </div>
               <p>Один и тот же интерьер до работы и после. Без фильтров, которые прячут пятна.</p>
             </div>
             <div className="result-grid">
               <figure className="result-card">
                 <div className="result-images">
-                  <div><img src="/images/case1-before.jpg" alt="Светлый диван до химчистки" loading="lazy" /><span>до</span></div>
-                  <div><img src="/images/case1-after.jpg" alt="Светлый диван после химчистки" loading="lazy" /><span>после</span></div>
+                  <div><img src="/images/sofa-before.jpg" alt="Светлый диван до химчистки" loading="lazy" /><span>до</span></div>
+                  <div><img src="/images/sofa-after.jpg" alt="Тот же светлый диван после химчистки" loading="lazy" /><span>после</span></div>
                 </div>
-                <figcaption><strong>Светлый угловой диван</strong><span>пятна, общий серый налёт, следы ежедневного использования</span></figcaption>
+                <figcaption><strong>Светлый трёхместный диван</strong><span>бытовые пятна, общий серый налёт, следы ежедневного использования</span></figcaption>
               </figure>
               <figure className="result-card">
                 <div className="result-images">
-                  <div><img src="/images/case3-before.jpg" alt="Диван в доме до химчистки" loading="lazy" /><span>до</span></div>
-                  <div><img src="/images/case3-after.jpg" alt="Диван в доме после химчистки" loading="lazy" /><span>после</span></div>
+                  <div><img src="/images/mattress-before.jpg" alt="Светлый матрас до химчистки" loading="lazy" /><span>до</span></div>
+                  <div><img src="/images/mattress-after.jpg" alt="Тот же светлый матрас после химчистки" loading="lazy" /><span>после</span></div>
                 </div>
-                <figcaption><strong>Большой диван в доме</strong><span>пыль, следы быта и запах в глубине обивки</span></figcaption>
+                <figcaption><strong>Двуспальный матрас</strong><span>пыль, следы быта и неравномерный оттенок ткани</span></figcaption>
               </figure>
             </div>
           </div>
@@ -297,7 +297,7 @@ export default function App() {
         <section className="safe section-space">
           <div className="container-x safe-grid">
             <div className="safe-photo">
-              <img src="/images/process-cleaning.webp" alt="Мастер чистит диван профессиональным экстрактором" loading="lazy" />
+              <img src="/images/process-po-chistote.jpg" alt="Мастер чистит диван профессиональным экстрактором" loading="lazy" />
               <div><Leaf size={20} /><span>Подбираем состав<br />под материал</span></div>
             </div>
             <div className="safe-copy">
@@ -350,7 +350,7 @@ export default function App() {
         <section className="final-cta">
           <div className="container-x final-cta-inner">
             <div className="section-kicker light">Оценим по фото</div>
-            <h2>Покажите, что случилось.<br /><em>Сделаем Чисто<span>.</span></em></h2>
+            <h2>Покажите, что случилось.<br /><em>Будет по чистоте<span>.</span></em></h2>
             <p>Пришлите 2–3 фото мебели и коротко опишите пятна. Ответим с ценой и ближайшим временем выезда.</p>
             <div>
               <a className="primary-cta inverse" href={`${WHATSAPP_BASE}?text=${encodeURIComponent("Здравствуйте! Хочу прислать фото мебели и узнать стоимость химчистки.")}`} target="_blank" rel="noreferrer"><WhatsappIcon /> Отправить фото</a>
@@ -367,7 +367,7 @@ export default function App() {
           <div><span>Связаться</span><a href={PHONE_HREF}>{PHONE}</a><a href={WHATSAPP_BASE} target="_blank" rel="noreferrer">WhatsApp</a></div>
           <div><span>Документы</span><a href="/privacy.html">Политика конфиденциальности</a><p>Сочи и ближайшие районы</p></div>
         </div>
-        <div className="container-x footer-bottom"><span>© 2026 Чисто.</span><span>Чистота начинается с точки.</span></div>
+        <div className="container-x footer-bottom"><span>© 2026 По чистоте.</span><span>Чтобы дома всё было по чистоте.</span></div>
       </footer>
 
       <div className="mobile-bar">
