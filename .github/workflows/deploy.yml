@@ -28,6 +28,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
+        env:
+          VITE_MANAGER_CALC_URL: ${{ vars.VITE_MANAGER_CALC_URL }}
+          VITE_CALC_PIN: ${{ vars.VITE_CALC_PIN }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

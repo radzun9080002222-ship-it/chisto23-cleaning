@@ -1,4 +1,5 @@
 User-agent: *
 Allow: /
+Disallow: /calc
 
 Sitemap: https://chisto23.ru/sitemap.xml
