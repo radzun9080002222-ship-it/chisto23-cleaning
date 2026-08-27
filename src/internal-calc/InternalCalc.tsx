@@ -9,6 +9,7 @@ import {
   LockKeyhole,
   Minus,
   Plus,
+  Settings2,
   Sparkles,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -29,6 +30,7 @@ const CITIES = [
   { id: "lipetsk", label: "Липецк", timeZone: "Europe/Moscow" },
   { id: "novy-urengoy", label: "Новый Уренгой", timeZone: "Asia/Yekaterinburg" },
   { id: "moscow", label: "Москва", timeZone: "Europe/Moscow" },
+  { id: "abkhazia", label: "Абхазия", timeZone: "Europe/Moscow" },
 ] as const;
 
 const CLEANING_LABELS: Record<CleaningType, string> = {
@@ -38,6 +40,19 @@ const CLEANING_LABELS: Record<CleaningType, string> = {
   allInclusive: "Всё включено",
 };
 
+const CLEANING_DURATION: Record<CleaningType, { label: string; calendarHours: number }> = {
+  wet: { label: "2–4 часа", calendarHours: 4 },
+  general: { label: "4–6 часов", calendarHours: 6 },
+  repair: { label: "6–8 часов", calendarHours: 8 },
+  allInclusive: { label: "6–8 часов", calendarHours: 8 },
+};
+
+const TIME_OPTIONS = Array.from({ length: 24 * 6 }, (_, index) => {
+  const hours = Math.floor(index / 6);
+  const minutes = (index % 6) * 10;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+});
+
 const DEFAULT_PRICING: PricingConfig = {
   cleaning: {
     wet: { rate: 160, minimum: 6000 },
@@ -46,7 +61,7 @@ const DEFAULT_PRICING: PricingConfig = {
     allInclusive: { standardRate: 450, panoramicRate: 550, minimum: 12000 },
   },
   windows: {
-    panoramic: { usual: 1200, repair: 2000 },
+    panoramic: { usual: 1000, repair: 1000 },
     standard: { usual: 500, repair: 750 },
     mini: { usual: 400, repair: 500 },
     balconyDoor: { usual: 1200, repair: 1500 },
@@ -83,7 +98,7 @@ const DEFAULT_PRICING: PricingConfig = {
     rug: 600,
     carpet: 550,
   },
-  special: { bathroom: 6000, mold: 1500, remoteTrip: 2000 },
+  special: { bathroom: 6000, mold: 1500, remoteTrip: 2000, kitchen: 7000 },
 };
 
 const WINDOWS = [
@@ -94,8 +109,8 @@ const WINDOWS = [
 ] as const;
 
 const EXTRAS = [
-  { id: "fridge", label: "Холодильник внутри", unit: "шт." },
-  { id: "fridge2", label: "Двухкамерный холодильник", unit: "шт." },
+  { id: "fridge", label: "Холодильник стандарт", unit: "шт." },
+  { id: "fridge2", label: "Холодильник Двухдверный", unit: "шт." },
   { id: "oven", label: "Духовой шкаф внутри", unit: "шт." },
   { id: "microwave", label: "Микроволновка", unit: "шт." },
   { id: "hood", label: "Вытяжка", unit: "шт." },
@@ -207,17 +222,23 @@ function ManagerCalculator({ pin }: { pin: string }) {
   const [dirt, setDirt] = useState(1);
   const [glassType, setGlassType] = useState<"standard" | "panoramic">("standard");
   const [windows, setWindows] = useState<CounterState>({});
+  const [panoramicPrice, setPanoramicPrice] = useState(1000);
   const [windowFilm, setWindowFilm] = useState(false);
   const [extras, setExtras] = useState<CounterState>({});
   const [dry, setDry] = useState<CounterState>({});
   const [bathrooms, setBathrooms] = useState(0);
   const [mold, setMold] = useState(false);
   const [remoteTrip, setRemoteTrip] = useState(false);
+  const [kitchenOnly, setKitchenOnly] = useState(false);
   const [manualPrice, setManualPrice] = useState<number | null>(null);
+  const [cleanerPayment, setCleanerPayment] = useState<number | null>(null);
+  const [brigadierPayment, setBrigadierPayment] = useState(0);
+  const [leadCost, setLeadCost] = useState(0);
+  const [taxPercent, setTaxPercent] = useState(0);
+  const [showMarginSettings, setShowMarginSettings] = useState(false);
   const [client, setClient] = useState({
     date: "",
     time: "",
-    duration: "3",
     name: "",
     phone: "",
     address: "",
@@ -289,7 +310,9 @@ function ManagerCalculator({ pin }: { pin: string }) {
     WINDOWS.forEach((item) => {
       const count = windows[item.id] || 0;
       if (!count) return;
-      const base = pricing.windows[item.id][type === "repair" ? "repair" : "usual"];
+      const base = item.id === "panoramic"
+        ? panoramicPrice
+        : pricing.windows[item.id][type === "repair" ? "repair" : "usual"];
       const sum = count * base * (type === "repair" && windowFilm ? 2 : 1);
       lines.push({ label: `${item.label} × ${count}${type === "repair" && windowFilm ? " (плёнка ×2)" : ""}`, sum, group: "other" });
     });
@@ -305,18 +328,27 @@ function ManagerCalculator({ pin }: { pin: string }) {
     if (bathrooms) lines.push({ label: `Отдельный санузел/ванная × ${bathrooms}`, sum: bathrooms * pricing.special.bathroom, group: "other" });
     if (mold) lines.push({ label: "Обработка плесени", sum: pricing.special.mold, group: "other" });
     if (remoteTrip) lines.push({ label: "Удалённый выезд", sum: pricing.special.remoteTrip, group: "other" });
+    if (kitchenOnly) lines.push({ label: "Выезд только на кухню", sum: pricing.special.kitchen ?? 7000, group: "other" });
 
     const total = lines.reduce((sum, line) => sum + line.sum, 0);
     const dryTotal = lines.filter((line) => line.group === "dry").reduce((sum, line) => sum + line.sum, 0);
     return { lines, total, dryTotal, rate, minimum };
-  }, [area, bathrooms, dirt, dry, extras, glassType, mold, pricing, remoteTrip, type, windowFilm, windows]);
+  }, [area, bathrooms, dirt, dry, extras, glassType, kitchenOnly, mold, panoramicPrice, pricing, remoteTrip, type, windowFilm, windows]);
 
   const finalTotal = manualPrice ?? calculation.total;
-  const autoCleaners = area > 0 ? Math.max(1, Math.ceil(area / ({ wet: 100, general: 30, repair: 25, allInclusive: 25 }[type]))) : 0;
-  const cleanerPay = ({ wet: 2500, general: 3000, repair: 3500, allInclusive: 3500 }[type]);
-  const dealCosts = autoCleaners * cleanerPay + calculation.total * 0.072 + calculation.dryTotal * 0.5 + finalTotal * 0.227;
+  const hasManualPrice = manualPrice !== null && manualPrice !== calculation.total;
+  const discountPercent = hasManualPrice && finalTotal < calculation.total && calculation.total > 0
+    ? Math.round((1 - finalTotal / calculation.total) * 100)
+    : 0;
+  const markupPercent = hasManualPrice && finalTotal > calculation.total && calculation.total > 0
+    ? Math.round((finalTotal / calculation.total - 1) * 100)
+    : 0;
+  const cleanerCost = cleanerPayment ?? 0;
+  const taxCost = finalTotal * taxPercent / 100;
+  const dealCosts = cleanerCost + brigadierPayment + leadCost + taxCost;
   const margin = finalTotal - dealCosts;
   const marginPercent = finalTotal > 0 ? (margin / finalTotal) * 100 : 0;
+  const duration = CLEANING_DURATION[type];
 
   const addressDetails = [
     client.address,
@@ -325,21 +357,21 @@ function ManagerCalculator({ pin }: { pin: string }) {
     client.intercom && `домофон ${client.intercom}`,
   ].filter(Boolean).join(", ");
 
-  const estimateText = useMemo(() => {
-    const rows = calculation.lines.map((line) => `• ${line.label} — ${fmt(line.sum)}`).join("\n");
-    const clientRows = [
-      `Город: ${city.label}`,
-      client.name && `Имя: ${client.name}`,
-      client.phone && `Телефон: ${client.phone}`,
-      (client.date || client.time) && `Дата и время: ${[client.date, client.time].filter(Boolean).join(" ")}`,
-      addressDetails && `Адрес: ${addressDetails}`,
-      client.note && `Дополнительно: ${client.note}`,
-    ].filter(Boolean).join("\n");
-    const totalRows = manualPrice !== null && manualPrice !== calculation.total
-      ? `ИТОГО ПО ПРАЙСУ: ${fmt(calculation.total)}\nЦЕНА ДЛЯ КЛИЕНТА: ${fmt(finalTotal)}`
-      : `ИТОГО: ${fmt(finalTotal)}`;
-    return `Расчёт стоимости уборки «Вершина»\n\n${rows || "Позиции не выбраны"}\n\n${totalRows}\n\nДанные клиента:\n${clientRows}\n\nЦену фиксируем до начала работ. Оплата после приёмки по чек-листу.`;
-  }, [addressDetails, calculation.lines, calculation.total, city.label, client, finalTotal, manualPrice]);
+  const estimateRows = calculation.lines.map((line) => `• ${line.label} — ${fmt(line.sum)}`).join("\n");
+  const clientRows = [
+    `Город: ${city.label}`,
+    client.name && `Имя: ${client.name}`,
+    client.phone && `Телефон: ${client.phone}`,
+    (client.date || client.time) && `Дата и время: ${[client.date, client.time].filter(Boolean).join(" ")}`,
+    `Ориентировочная длительность: ${duration.label}`,
+    addressDetails && `Адрес: ${addressDetails}`,
+    client.note && `Дополнительно: ${client.note}`,
+  ].filter(Boolean).join("\n");
+  const totalRows = hasManualPrice
+    ? `ИТОГО ПО ПРАЙСУ: ${fmt(calculation.total)}\nЦЕНА ДЛЯ КЛИЕНТА: ${fmt(finalTotal)}${discountPercent > 0 ? ` (скидка ${discountPercent}%)` : ""}`
+    : `ИТОГО: ${fmt(finalTotal)}`;
+  const estimateText = `Расчёт стоимости уборки «Вершина»\n\n${estimateRows || "Позиции не выбраны"}\n\n${totalRows}\n\nДанные клиента:\n${clientRows}\n\nЦену фиксируем до начала работ. Оплата после приёмки по чек-листу.`;
+  const calendarDescription = `Расчёт стоимости уборки «Вершина»\n\n${estimateRows || "Позиции не выбраны"}\n\n${totalRows}\nРасходы на клинера: ${fmt(cleanerCost)}\nЧистая прибыль: ${fmt(margin)}\n\nДанные клиента:\n${clientRows}\n\nЦену фиксируем до начала работ. Оплата после приёмки по чек-листу.`;
 
   const copyEstimate = async () => {
     try {
@@ -366,10 +398,10 @@ function ManagerCalculator({ pin }: { pin: string }) {
     try {
       await createCalendarEvent(pin, {
         summary: `${baseTitle}${hasDry && area > 0 ? " + Химчистка" : ""}`,
-        description: estimateText,
+        description: calendarDescription,
         location: `${city.label}, ${addressDetails}`,
         startDateTime: `${client.date}T${client.time}:00`,
-        endDateTime: addHours(client.date, client.time, Math.max(1, Number(client.duration) || 1)),
+        endDateTime: addHours(client.date, client.time, duration.calendarHours),
         timeZone: city.timeZone,
       });
       setCalendarStatus("ok");
@@ -387,14 +419,21 @@ function ManagerCalculator({ pin }: { pin: string }) {
     setDirt(1);
     setGlassType("standard");
     setWindows({});
+    setPanoramicPrice(1000);
     setWindowFilm(false);
     setExtras({});
     setDry({});
     setBathrooms(0);
     setMold(false);
     setRemoteTrip(false);
+    setKitchenOnly(false);
     setManualPrice(null);
-    setClient({ date: "", time: "", duration: "3", name: "", phone: "", address: "", floor: "", apartment: "", intercom: "", note: "" });
+    setCleanerPayment(null);
+    setBrigadierPayment(0);
+    setLeadCost(0);
+    setTaxPercent(0);
+    setShowMarginSettings(false);
+    setClient({ date: "", time: "", name: "", phone: "", address: "", floor: "", apartment: "", intercom: "", note: "" });
     setCalendarStatus("idle");
     setCalendarMessage("");
   };
@@ -443,15 +482,15 @@ function ManagerCalculator({ pin }: { pin: string }) {
           <Section title="Окна">
             <div className="manager-price-list">
               {WINDOWS.map((item) => {
-                const price = pricing.windows[item.id][type === "repair" ? "repair" : "usual"];
-                return <div className="manager-price-row" key={item.id}><div><strong>{item.label}</strong><small>{fmt(price)} / {item.unit}</small></div><Counter label={item.label} value={windows[item.id] || 0} onChange={(value) => updateCounter(setWindows, item.id, value)} /></div>;
+                const price = item.id === "panoramic" ? panoramicPrice : pricing.windows[item.id][type === "repair" ? "repair" : "usual"];
+                return <div className="manager-price-row" key={item.id}><div><strong>{item.label}</strong>{item.id === "panoramic" ? <label className="manager-unit-price"><input aria-label="Цена панорамной створки" type="number" min={0} step={100} value={panoramicPrice || ""} onChange={(event) => setPanoramicPrice(Math.max(0, Number(event.target.value) || 0))} /><span>₽ / {item.unit}</span></label> : <small>{fmt(price)} / {item.unit}</small>}</div><Counter label={item.label} value={windows[item.id] || 0} onChange={(value) => updateCounter(setWindows, item.id, value)} /></div>;
               })}
             </div>
             {type === "repair" && <label className="manager-check"><input type="checkbox" checked={windowFilm} onChange={(event) => setWindowFilm(event.target.checked)} /><span><strong>Защитная плёнка на окнах</strong><small>Стоимость мойки окон ×2</small></span></label>}
           </Section>
 
           <Section title="Дополнительные услуги">
-            <div className="manager-price-list manager-price-grid">
+            <div className="manager-price-list">
               {EXTRAS.map((item) => <div className="manager-price-row" key={item.id}><div><strong>{item.label}</strong><small>{fmt(pricing.extras[item.id])} / {item.unit}</small></div><Counter label={item.label} value={extras[item.id] || 0} onChange={(value) => updateCounter(setExtras, item.id, value)} /></div>)}
             </div>
           </Section>
@@ -468,6 +507,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
               <label><span>Дополнительный санузел · {fmt(pricing.special.bathroom)}</span><Counter label="Дополнительный санузел" value={bathrooms} onChange={setBathrooms} /></label>
               <label className="manager-check"><input type="checkbox" checked={mold} onChange={(event) => setMold(event.target.checked)} /><span><strong>Обработка плесени</strong><small>{fmt(pricing.special.mold)}</small></span></label>
               <label className="manager-check"><input type="checkbox" checked={remoteTrip} onChange={(event) => setRemoteTrip(event.target.checked)} /><span><strong>Удалённый выезд</strong><small>{fmt(pricing.special.remoteTrip)}</small></span></label>
+              <label className="manager-check"><input type="checkbox" checked={kitchenOnly} onChange={(event) => setKitchenOnly(event.target.checked)} /><span><strong>Выезд только на кухню</strong><small>{fmt(pricing.special.kitchen ?? 7000)}</small></span></label>
             </div>
           </Section>
         </div>
@@ -477,16 +517,27 @@ function ManagerCalculator({ pin }: { pin: string }) {
             <div className="manager-summary-head"><span>Расчёт</span><small className={`source-${pricingSource}`}>{pricingSource === "supabase" ? "цены из Supabase" : pricingSource === "loading" ? "загрузка цен…" : "резервный прайс"}</small></div>
             {calculation.lines.length ? <div className="manager-lines">{calculation.lines.map((line, index) => <div key={`${line.label}-${index}`}><span>{line.label}</span><strong>{fmt(line.sum)}</strong></div>)}</div> : <div className="manager-empty">Добавьте площадь, услугу или химчистку</div>}
             <div className="manager-total"><span>Итого по прайсу</span><strong>{fmt(calculation.total)}</strong></div>
-            <label className="manager-manual"><span>Цена для клиента</span><input type="number" min={0} value={(manualPrice ?? calculation.total) || ""} onChange={(event) => { const value = Number(event.target.value); setManualPrice(value === calculation.total ? null : Math.max(0, value || 0)); }} /></label>
-            {calculation.total > 0 && <div className={`manager-margin ${marginPercent >= 30 ? "good" : marginPercent >= 20 ? "warn" : "bad"}`}><div><span>Маржа сделки</span><strong>{fmt(margin)}</strong></div><b>{marginPercent.toFixed(0)}%</b><small>{autoCleaners} клинер(а) × {fmt(cleanerPay)} · расчёт ориентировочный</small></div>}
+            <label className="manager-manual manager-manual-with-note"><span>Цена для клиента{discountPercent > 0 && <small>Скидка {discountPercent}% · −{fmt(calculation.total - finalTotal)}</small>}{markupPercent > 0 && <small className="markup">Наценка {markupPercent}% · +{fmt(finalTotal - calculation.total)}</small>}</span><input type="number" min={0} value={(manualPrice ?? calculation.total) || ""} onChange={(event) => { const value = Number(event.target.value); setManualPrice(value === calculation.total ? null : Math.max(0, value || 0)); }} /></label>
+            <label className="manager-manual manager-cleaner-payment"><span>Оплата клинеру<small>Фактический расход, необязательно</small></span><input type="number" min={0} step={100} placeholder="0" value={cleanerPayment ?? ""} onChange={(event) => setCleanerPayment(event.target.value === "" ? null : Math.max(0, Number(event.target.value) || 0))} /></label>
+            {calculation.total > 0 && <>
+              <div className={`manager-margin ${marginPercent >= 30 ? "good" : marginPercent >= 20 ? "warn" : "bad"}`}><div><span>Маржа сделки</span><strong>{fmt(margin)}</strong></div><b>{marginPercent.toFixed(0)}%</b><small>Расходы: {fmt(dealCosts)} · чистая прибыль после указанных затрат</small></div>
+              <button type="button" className="manager-margin-toggle" onClick={() => setShowMarginSettings((value) => !value)}><Settings2 size={15} />{showMarginSettings ? "Скрыть параметры маржи" : "Параметры маржи"}</button>
+              {showMarginSettings && <div className="manager-margin-settings">
+                <div><span>Оплата клинеру</span><strong>{fmt(cleanerCost)}</strong></div>
+                <label><span>Оплата Бригадиру</span><div><input aria-label="Оплата Бригадиру" type="number" min={0} step={100} value={brigadierPayment || ""} placeholder="0" onChange={(event) => setBrigadierPayment(Math.max(0, Number(event.target.value) || 0))} /><small>₽</small></div></label>
+                <label><span>Стоимость рекламного лида</span><div><input aria-label="Стоимость рекламного лида" type="number" min={0} step={100} value={leadCost || ""} placeholder="0" onChange={(event) => setLeadCost(Math.max(0, Number(event.target.value) || 0))} /><small>₽</small></div></label>
+                <label><span>Налог от выручки</span><div><input aria-label="Налог от выручки" type="number" min={0} max={100} step={0.1} value={taxPercent || ""} placeholder="0" onChange={(event) => setTaxPercent(Math.min(100, Math.max(0, Number(event.target.value) || 0)))} /><small>%</small></div></label>
+                <div><span>Налог в рублях</span><strong>{fmt(taxCost)}</strong></div>
+              </div>}
+            </>}
           </div>
 
           <div className="manager-client">
             <h2>Данные клиента</h2>
             <div className="manager-form-grid">
               <label><span>День уборки *</span><input type="date" value={client.date} onChange={(event) => setClientValue("date", event.target.value)} /></label>
-              <label><span>Время *</span><input type="time" value={client.time} onChange={(event) => setClientValue("time", event.target.value)} /></label>
-              <label><span>Длительность, ч</span><input type="number" min={1} max={24} value={client.duration} onChange={(event) => setClientValue("duration", event.target.value)} /></label>
+              <label><span>Время *</span><select value={client.time} onChange={(event) => setClientValue("time", event.target.value)}><option value="">Выберите время</option>{TIME_OPTIONS.map((time) => <option key={time} value={time}>{time}</option>)}</select></label>
+              <label><span>Длительность</span><input className="manager-readonly" readOnly value={duration.label} /></label>
               <label><span>Имя *</span><input value={client.name} onChange={(event) => setClientValue("name", event.target.value)} /></label>
               <label className="wide"><span>Телефон *</span><input type="text" placeholder="+7" value={client.phone} onChange={(event) => setClientValue("phone", event.target.value)} /></label>
               <label className="wide"><span>Адрес *</span><input placeholder="Улица, дом" value={client.address} onChange={(event) => setClientValue("address", event.target.value)} /></label>
