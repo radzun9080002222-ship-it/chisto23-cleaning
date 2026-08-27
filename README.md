@@ -27,3 +27,7 @@ pnpm run build
 
 PIN страницы по умолчанию: `3715`. Это клиентская защита от случайного доступа,
 а серверная функция повторно проверяет PIN из секрета `CALC_PIN`.
+
+Рабочий backend калькулятора развёрнут в Supabase-проекте
+`apuajxotemukpjheppaz`; Google credentials хранятся только в Edge Function
+Secrets и не попадают в клиентскую сборку или Git.

@@ -16,6 +16,10 @@ JSON-ключ не добавлять в Git. После переноса зна
 
 ## 2. Supabase
 
+Рабочий проект: `apuajxotemukpjheppaz` (`vershina-platform-dev`). Миграция
+применена, функция `manager-calc` опубликована без проверки JWT на шлюзе; запрос
+защищён собственными проверками PIN и origin внутри функции.
+
 Применить миграцию и опубликовать функцию:
 
 ```bash
@@ -49,6 +53,12 @@ VITE_CALC_PIN=3715
 
 После следующего deployment страница `https://chisto23.ru/calc` загрузит цены из
 таблицы `manager_calc_pricing` и начнёт добавлять события сразу по кнопке.
+
+Текущий endpoint:
+
+```text
+https://apuajxotemukpjheppaz.supabase.co/functions/v1/manager-calc
+```
 
 ## Формат события
 
