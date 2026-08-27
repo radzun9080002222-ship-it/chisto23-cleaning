@@ -20,7 +20,7 @@ values (
       "allInclusive": {"standardRate": 450, "panoramicRate": 550, "minimum": 12000}
     },
     "windows": {
-      "panoramic": {"usual": 1200, "repair": 2000},
+      "panoramic": {"usual": 1000, "repair": 1000},
       "standard": {"usual": 500, "repair": 750},
       "mini": {"usual": 400, "repair": 500},
       "balconyDoor": {"usual": 1200, "repair": 1500}

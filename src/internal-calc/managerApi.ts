@@ -12,7 +12,7 @@ export type PricingConfig = {
   windows: Record<string, { usual: number; repair: number }>;
   extras: Record<string, number>;
   dry: Record<string, number>;
-  special: { bathroom: number; mold: number; remoteTrip: number };
+  special: { bathroom: number; mold: number; remoteTrip: number; kitchen?: number };
 };
 
 export type CalendarEventPayload = {
