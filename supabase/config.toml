@@ -1,0 +1,4 @@
+project_id = "apuajxotemukpjheppaz"
+
+[functions.manager-calc]
+verify_jwt = false
