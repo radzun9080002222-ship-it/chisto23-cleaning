@@ -129,6 +129,45 @@ const DRY_CLEANING = [
 
 const fmt = (value: number) => `${Math.round(value).toLocaleString("ru-RU")} ₽`;
 
+const HOURS = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, "0"));
+const MINUTES = ["00", "10", "20", "30", "40", "50"];
+
+const formatDateTime = (date: string, time: string) => {
+  const timeText = time
+    ? `${Number(time.split(":")[0])}:${time.split(":")[1]}`
+    : "";
+  if (!date) return timeText;
+  const [year, month, day] = date.split("-").map(Number);
+  if (!year || !month || !day) return [date, timeText].filter(Boolean).join(", ");
+  const dateText = new Intl.DateTimeFormat("ru-RU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, day))).replace(/\s*г\.$/, "");
+  return [dateText, timeText].filter(Boolean).join(", ");
+};
+
+const formatDurationRange = (duration: string) => {
+  const expected = Math.max(1, Number(duration) || 1);
+  const from = Math.max(1, expected - 1);
+  const to = expected + 1;
+  return `${from}–${to} ${to <= 4 ? "часа" : "часов"}`;
+};
+
+const copyText = async (text: string) => {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const areaElement = document.createElement("textarea");
+    areaElement.value = text;
+    document.body.appendChild(areaElement);
+    areaElement.select();
+    document.execCommand("copy");
+    areaElement.remove();
+  }
+};
+
 const addHours = (date: string, time: string, duration: number) => {
   const value = new Date(`${date}T${time}:00`);
   value.setHours(value.getHours() + duration);
@@ -214,6 +253,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
   const [mold, setMold] = useState(false);
   const [remoteTrip, setRemoteTrip] = useState(false);
   const [manualPrice, setManualPrice] = useState<number | null>(null);
+  const [manualExpenses, setManualExpenses] = useState<number | null>(null);
   const [client, setClient] = useState({
     date: "",
     time: "",
@@ -223,10 +263,12 @@ function ManagerCalculator({ pin }: { pin: string }) {
     address: "",
     floor: "",
     apartment: "",
+    entrance: "",
     intercom: "",
     note: "",
   });
   const [copied, setCopied] = useState(false);
+  const [brigadierCopied, setBrigadierCopied] = useState(false);
   const [calendarStatus, setCalendarStatus] = useState<"idle" | "sending" | "ok" | "error">("idle");
   const [calendarMessage, setCalendarMessage] = useState("");
 
@@ -264,7 +306,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
   };
 
   const calculation = useMemo(() => {
-    const lines: { label: string; sum: number; group: "cleaning" | "dry" | "other" }[] = [];
+    const lines: { label: string; brigadierLabel: string; sum: number; group: "cleaning" | "dry" | "other" }[] = [];
     let rate = 0;
     let minimum = 0;
     if (type === "allInclusive") {
@@ -281,6 +323,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
       const sum = Math.max(raw, minimum);
       lines.push({
         label: `${CLEANING_LABELS[type]}, ${area} м² × ${rate} ₽${dirt > 1 ? ` × ${dirt.toFixed(1)}` : ""}${sum > raw ? " (минимальный заказ)" : ""}`,
+        brigadierLabel: `${CLEANING_LABELS[type]}, ${area} м²${dirt > 1 ? `, загрязнённость ×${dirt.toFixed(1)}` : ""}`,
         sum,
         group: "cleaning",
       });
@@ -291,20 +334,27 @@ function ManagerCalculator({ pin }: { pin: string }) {
       if (!count) return;
       const base = pricing.windows[item.id][type === "repair" ? "repair" : "usual"];
       const sum = count * base * (type === "repair" && windowFilm ? 2 : 1);
-      lines.push({ label: `${item.label} × ${count}${type === "repair" && windowFilm ? " (плёнка ×2)" : ""}`, sum, group: "other" });
+      const label = `${item.label} × ${count}${type === "repair" && windowFilm ? " (плёнка ×2)" : ""}`;
+      lines.push({ label, brigadierLabel: label, sum, group: "other" });
     });
 
     EXTRAS.forEach((item) => {
       const count = extras[item.id] || 0;
-      if (count) lines.push({ label: `${item.label} × ${count} ${item.unit}`, sum: count * pricing.extras[item.id], group: "other" });
+      if (count) {
+        const label = `${item.label} × ${count} ${item.unit}`;
+        lines.push({ label, brigadierLabel: label, sum: count * pricing.extras[item.id], group: "other" });
+      }
     });
     DRY_CLEANING.forEach((item) => {
       const count = dry[item.id] || 0;
-      if (count) lines.push({ label: `Химчистка: ${item.label} × ${count} ${item.unit}`, sum: count * pricing.dry[item.id], group: "dry" });
+      if (count) {
+        const label = `Химчистка: ${item.label} × ${count} ${item.unit}`;
+        lines.push({ label, brigadierLabel: label, sum: count * pricing.dry[item.id], group: "dry" });
+      }
     });
-    if (bathrooms) lines.push({ label: `Отдельный санузел/ванная × ${bathrooms}`, sum: bathrooms * pricing.special.bathroom, group: "other" });
-    if (mold) lines.push({ label: "Обработка плесени", sum: pricing.special.mold, group: "other" });
-    if (remoteTrip) lines.push({ label: "Удалённый выезд", sum: pricing.special.remoteTrip, group: "other" });
+    if (bathrooms) lines.push({ label: `Отдельный санузел/ванная × ${bathrooms}`, brigadierLabel: `Отдельный санузел/ванная × ${bathrooms}`, sum: bathrooms * pricing.special.bathroom, group: "other" });
+    if (mold) lines.push({ label: "Обработка плесени", brigadierLabel: "Обработка плесени", sum: pricing.special.mold, group: "other" });
+    if (remoteTrip) lines.push({ label: "Удалённый выезд", brigadierLabel: "Удалённый выезд", sum: pricing.special.remoteTrip, group: "other" });
 
     const total = lines.reduce((sum, line) => sum + line.sum, 0);
     const dryTotal = lines.filter((line) => line.group === "dry").reduce((sum, line) => sum + line.sum, 0);
@@ -314,16 +364,19 @@ function ManagerCalculator({ pin }: { pin: string }) {
   const finalTotal = manualPrice ?? calculation.total;
   const autoCleaners = area > 0 ? Math.max(1, Math.ceil(area / ({ wet: 100, general: 30, repair: 25, allInclusive: 25 }[type]))) : 0;
   const cleanerPay = ({ wet: 2500, general: 3000, repair: 3500, allInclusive: 3500 }[type]);
-  const dealCosts = autoCleaners * cleanerPay + calculation.total * 0.072 + calculation.dryTotal * 0.5 + finalTotal * 0.227;
-  const margin = finalTotal - dealCosts;
+  const automaticExpenses = autoCleaners * cleanerPay + calculation.total * 0.072 + calculation.dryTotal * 0.5 + finalTotal * 0.227;
+  const expenses = manualExpenses ?? Math.round(automaticExpenses);
+  const margin = finalTotal - expenses;
   const marginPercent = finalTotal > 0 ? (margin / finalTotal) * 100 : 0;
 
   const addressDetails = [
     client.address,
     client.floor && `этаж ${client.floor}`,
     client.apartment && `кв. ${client.apartment}`,
-    client.intercom && `домофон ${client.intercom}`,
   ].filter(Boolean).join(", ");
+
+  const formattedDateTime = formatDateTime(client.date, client.time);
+  const durationRange = formatDurationRange(client.duration);
 
   const estimateText = useMemo(() => {
     const rows = calculation.lines.map((line) => `• ${line.label} — ${fmt(line.sum)}`).join("\n");
@@ -331,29 +384,46 @@ function ManagerCalculator({ pin }: { pin: string }) {
       `Город: ${city.label}`,
       client.name && `Имя: ${client.name}`,
       client.phone && `Телефон: ${client.phone}`,
-      (client.date || client.time) && `Дата и время: ${[client.date, client.time].filter(Boolean).join(" ")}`,
+      formattedDateTime && `Дата и время: ${formattedDateTime}`,
+      `Ориентировочная длительность: ${durationRange}`,
       addressDetails && `Адрес: ${addressDetails}`,
+      client.entrance && `Подъезд: ${client.entrance}`,
+      client.intercom && `Код домофона: ${client.intercom}`,
       client.note && `Дополнительно: ${client.note}`,
     ].filter(Boolean).join("\n");
     const totalRows = manualPrice !== null && manualPrice !== calculation.total
       ? `ИТОГО ПО ПРАЙСУ: ${fmt(calculation.total)}\nЦЕНА ДЛЯ КЛИЕНТА: ${fmt(finalTotal)}`
       : `ИТОГО: ${fmt(finalTotal)}`;
-    return `Расчёт стоимости уборки «Вершина»\n\n${rows || "Позиции не выбраны"}\n\n${totalRows}\n\nДанные клиента:\n${clientRows}\n\nЦену фиксируем до начала работ. Оплата после приёмки по чек-листу.`;
-  }, [addressDetails, calculation.lines, calculation.total, city.label, client, finalTotal, manualPrice]);
+    const financeRows = `${totalRows}\nРАСХОДЫ: ${fmt(expenses)}\nМАРЖА: ${fmt(margin)} (${marginPercent.toFixed(0)}%)`;
+    return `Расчёт стоимости уборки «Вершина»\n\n${rows || "Позиции не выбраны"}\n\n${financeRows}\n\nДанные клиента:\n${clientRows}\n\nЦену фиксируем до начала работ. Оплата после приёмки по чек-листу.`;
+  }, [addressDetails, calculation.lines, calculation.total, city.label, client, durationRange, expenses, finalTotal, formattedDateTime, manualPrice, margin, marginPercent]);
+
+  const brigadierText = useMemo(() => {
+    const rows = calculation.lines.map((line) => `• ${line.brigadierLabel}`).join("\n");
+    const clientRows = [
+      `Город: ${city.label}`,
+      client.name && `Имя: ${client.name}`,
+      client.phone && `Телефон: ${client.phone}`,
+      formattedDateTime && `Дата и время: ${formattedDateTime}`,
+      `Ориентировочная длительность: ${durationRange}`,
+      addressDetails && `Адрес: ${addressDetails}`,
+      client.entrance && `Подъезд: ${client.entrance}`,
+      client.intercom && `Код домофона: ${client.intercom}`,
+      client.note && `Дополнительно: ${client.note}`,
+    ].filter(Boolean).join("\n");
+    return `${rows || "Позиции не выбраны"}\n\nДанные клиента:\n${clientRows}`;
+  }, [addressDetails, calculation.lines, city.label, client, durationRange, formattedDateTime]);
 
   const copyEstimate = async () => {
-    try {
-      await navigator.clipboard.writeText(estimateText);
-    } catch {
-      const areaElement = document.createElement("textarea");
-      areaElement.value = estimateText;
-      document.body.appendChild(areaElement);
-      areaElement.select();
-      document.execCommand("copy");
-      areaElement.remove();
-    }
+    await copyText(estimateText);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2200);
+  };
+
+  const copyForBrigadier = async () => {
+    await copyText(brigadierText);
+    setBrigadierCopied(true);
+    window.setTimeout(() => setBrigadierCopied(false), 2200);
   };
 
   const calendarReady = calculation.lines.length > 0 && Boolean(client.date && client.time && client.name && client.phone && client.address);
@@ -394,7 +464,10 @@ function ManagerCalculator({ pin }: { pin: string }) {
     setMold(false);
     setRemoteTrip(false);
     setManualPrice(null);
-    setClient({ date: "", time: "", duration: "3", name: "", phone: "", address: "", floor: "", apartment: "", intercom: "", note: "" });
+    setManualExpenses(null);
+    setClient({ date: "", time: "", duration: "3", name: "", phone: "", address: "", floor: "", apartment: "", entrance: "", intercom: "", note: "" });
+    setCopied(false);
+    setBrigadierCopied(false);
     setCalendarStatus("idle");
     setCalendarMessage("");
   };
@@ -478,21 +551,23 @@ function ManagerCalculator({ pin }: { pin: string }) {
             {calculation.lines.length ? <div className="manager-lines">{calculation.lines.map((line, index) => <div key={`${line.label}-${index}`}><span>{line.label}</span><strong>{fmt(line.sum)}</strong></div>)}</div> : <div className="manager-empty">Добавьте площадь, услугу или химчистку</div>}
             <div className="manager-total"><span>Итого по прайсу</span><strong>{fmt(calculation.total)}</strong></div>
             <label className="manager-manual"><span>Цена для клиента</span><input type="number" min={0} value={(manualPrice ?? calculation.total) || ""} onChange={(event) => { const value = Number(event.target.value); setManualPrice(value === calculation.total ? null : Math.max(0, value || 0)); }} /></label>
-            {calculation.total > 0 && <div className={`manager-margin ${marginPercent >= 30 ? "good" : marginPercent >= 20 ? "warn" : "bad"}`}><div><span>Маржа сделки</span><strong>{fmt(margin)}</strong></div><b>{marginPercent.toFixed(0)}%</b><small>{autoCleaners} клинер(а) × {fmt(cleanerPay)} · расчёт ориентировочный</small></div>}
+            <label className="manager-manual manager-expenses"><span>Расходы</span><input type="number" min={0} value={expenses || ""} onChange={(event) => { const value = Math.max(0, Number(event.target.value) || 0); setManualExpenses(value === Math.round(automaticExpenses) ? null : value); }} /></label>
+            {calculation.total > 0 && <div className={`manager-margin ${marginPercent >= 30 ? "good" : marginPercent >= 20 ? "warn" : "bad"}`}><div><span>Маржа сделки</span><strong>{fmt(margin)}</strong></div><b>{marginPercent.toFixed(0)}%</b><small>Параметры маржи: {autoCleaners} клинер(а) × {fmt(cleanerPay)}, комиссии и выплаты · расчёт ориентировочный</small></div>}
           </div>
 
           <div className="manager-client">
             <h2>Данные клиента</h2>
             <div className="manager-form-grid">
               <label><span>День уборки *</span><input type="date" value={client.date} onChange={(event) => setClientValue("date", event.target.value)} /></label>
-              <label><span>Время *</span><input type="time" value={client.time} onChange={(event) => setClientValue("time", event.target.value)} /></label>
+              <label className="manager-time-field"><span>Время *</span><span className="manager-time-selects"><select aria-label="Часы" value={client.time.split(":")[0] || ""} onChange={(event) => setClientValue("time", event.target.value ? `${event.target.value}:${client.time.split(":")[1] || "00"}` : "")}><option value="">Часы</option>{HOURS.map((hour) => <option key={hour} value={hour}>{hour}</option>)}</select><select aria-label="Минуты" value={client.time.split(":")[1] || "00"} disabled={!client.time.split(":")[0]} onChange={(event) => setClientValue("time", `${client.time.split(":")[0]}:${event.target.value}`)}>{MINUTES.map((minute) => <option key={minute} value={minute}>{minute}</option>)}</select></span></label>
               <label><span>Длительность, ч</span><input type="number" min={1} max={24} value={client.duration} onChange={(event) => setClientValue("duration", event.target.value)} /></label>
               <label><span>Имя *</span><input value={client.name} onChange={(event) => setClientValue("name", event.target.value)} /></label>
               <label className="wide"><span>Телефон *</span><input type="text" placeholder="+7" value={client.phone} onChange={(event) => setClientValue("phone", event.target.value)} /></label>
               <label className="wide"><span>Адрес *</span><input placeholder="Улица, дом" value={client.address} onChange={(event) => setClientValue("address", event.target.value)} /></label>
               <label><span>Этаж</span><input value={client.floor} onChange={(event) => setClientValue("floor", event.target.value)} /></label>
               <label><span>Квартира</span><input value={client.apartment} onChange={(event) => setClientValue("apartment", event.target.value)} /></label>
-              <label className="wide"><span>Код домофона</span><input value={client.intercom} onChange={(event) => setClientValue("intercom", event.target.value)} /></label>
+              <label><span>Код домофона</span><input value={client.intercom} onChange={(event) => setClientValue("intercom", event.target.value)} /></label>
+              <label><span>Подъезд</span><input value={client.entrance} onChange={(event) => setClientValue("entrance", event.target.value)} /></label>
               <label className="wide"><span>Дополнительно</span><textarea rows={3} placeholder="Парковка, питомцы, пожелания…" value={client.note} onChange={(event) => setClientValue("note", event.target.value)} /></label>
             </div>
             <div className="manager-actions">
@@ -503,6 +578,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
               {!calendarReady && calculation.lines.length > 0 && <p className="manager-hint">Для календаря заполните дату, время, имя, телефон и адрес.</p>}
               {calendarMessage && <p className={`manager-status ${calendarStatus}`}><AlertCircle size={14} />{calendarMessage}</p>}
               <button type="button" className="manager-secondary" disabled={!calculation.lines.length} onClick={copyEstimate}>{copied ? <Check size={17} /> : <Clipboard size={17} />}{copied ? "Скопировано" : "Скопировать смету + данные"}</button>
+              <button type="button" className="manager-secondary manager-brigadier" disabled={!calculation.lines.length} onClick={copyForBrigadier}>{brigadierCopied ? <Check size={17} /> : <Clipboard size={17} />}{brigadierCopied ? "Скопировано для бригадира" : "Скопировать для бригадира"}</button>
               <button type="button" className="manager-secondary" onClick={reset}><Eraser size={17} />Сбросить всё</button>
             </div>
           </div>

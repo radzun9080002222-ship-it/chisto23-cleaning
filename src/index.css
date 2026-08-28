@@ -369,9 +369,9 @@ body:has(.manager-calc), body:has(.manager-lock) { padding-bottom: 0; background
 .manager-inline-options > span { margin-right: 4px; color: var(--mc-muted); font-size: 11px; font-weight: 650; }
 .manager-field-row { display: flex; align-items: end; flex-wrap: wrap; gap: 24px; margin-top: 18px; }
 .manager-field-row label { display: grid; gap: 6px; color: var(--mc-muted); font-size: 11px; font-weight: 650; }
-.manager-field-row input, .manager-manual input, .manager-form-grid input, .manager-form-grid textarea { width: 100%; border: 1px solid var(--mc-line); border-radius: 11px; background: #fff; color: var(--mc-ink); padding: 0 12px; font: inherit; font-size: 13px; outline: none; transition: border-color .18s, box-shadow .18s; }
+.manager-field-row input, .manager-manual input, .manager-form-grid input, .manager-form-grid textarea, .manager-form-grid select { width: 100%; border: 1px solid var(--mc-line); border-radius: 11px; background: #fff; color: var(--mc-ink); padding: 0 12px; font: inherit; font-size: 13px; outline: none; transition: border-color .18s, box-shadow .18s; }
 .manager-field-row input { width: 130px; height: 42px; font-size: 16px; font-weight: 750; }
-.manager-field-row input:focus, .manager-manual input:focus, .manager-form-grid input:focus, .manager-form-grid textarea:focus { border-color: rgba(49,86,200,.65); box-shadow: 0 0 0 3px rgba(49,86,200,.1); }
+.manager-field-row input:focus, .manager-manual input:focus, .manager-form-grid input:focus, .manager-form-grid textarea:focus, .manager-form-grid select:focus { border-color: rgba(49,86,200,.65); box-shadow: 0 0 0 3px rgba(49,86,200,.1); }
 .manager-rate { display: grid; gap: 2px; }
 .manager-rate span { color: var(--mc-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
 .manager-rate strong { color: var(--mc-blue); font-size: 17px; }
@@ -419,6 +419,7 @@ body:has(.manager-calc), body:has(.manager-lock) { padding-bottom: 0; background
 .manager-manual { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 0 18px 16px; }
 .manager-manual span { color: var(--mc-muted); font-size: 10px; }
 .manager-manual input { width: 130px; height: 37px; text-align: right; font-weight: 750; }
+.manager-expenses { border-top: 1px solid #edf0f5; padding-top: 14px; }
 .manager-margin { margin: 0 12px 12px; border: 1px solid; border-radius: 13px; padding: 12px; }
 .manager-margin > div { display: flex; justify-content: space-between; gap: 10px; font-size: 10px; }
 .manager-margin > b { display: block; margin-top: 3px; font-size: 21px; }
@@ -432,7 +433,10 @@ body:has(.manager-calc), body:has(.manager-lock) { padding-bottom: 0; background
 .manager-form-grid label { min-width: 0; display: grid; gap: 5px; color: var(--mc-muted); font-size: 9px; font-weight: 650; }
 .manager-form-grid label.wide { grid-column: 1 / -1; }
 .manager-form-grid input { height: 38px; }
+.manager-form-grid select { height: 38px; cursor: pointer; }
 .manager-form-grid textarea { min-height: 72px; padding-top: 10px; resize: vertical; }
+.manager-time-selects { display: grid; grid-template-columns: minmax(0, 1fr) 74px; gap: 7px; }
+.manager-time-selects select:disabled { background: #f4f5f8; color: #9ba2b2; cursor: not-allowed; }
 .manager-actions { display: grid; gap: 8px; margin-top: 14px; }
 .manager-actions button, .manager-primary { min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 12px; padding: 0 14px; font: inherit; font-size: 11px; font-weight: 750; cursor: pointer; transition: .18s ease; }
 .manager-calendar, .manager-primary { border: 0; background: linear-gradient(115deg, var(--mc-blue), #4b70dc); color: #fff; box-shadow: 0 9px 22px rgba(49,86,200,.22); }
@@ -440,6 +444,8 @@ body:has(.manager-calc), body:has(.manager-lock) { padding-bottom: 0; background
 .manager-actions button:disabled, .manager-primary:disabled { opacity: .48; cursor: default; transform: none; }
 .manager-secondary { border: 1px solid var(--mc-line); background: #fff; color: #36405a; }
 .manager-secondary:hover { border-color: #aeb9d5; background: #f8f9fc; }
+.manager-brigadier { border-color: #b9d7cf; background: #f3fbf8; color: #176a58; }
+.manager-brigadier:hover { border-color: #7fb7a9; background: #eaf8f3; }
 .manager-hint, .manager-status { display: flex; align-items: flex-start; justify-content: center; gap: 6px; margin: -2px 0 2px; color: var(--mc-muted); font-size: 9px; text-align: center; }
 .manager-status.ok { color: #08745f; }
 .manager-status.error { color: #b92f3a; }
