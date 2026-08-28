@@ -147,13 +147,18 @@ const formatDateTime = (date: string, time: string) => {
     : "";
   if (!date) return timeText;
   const [year, month, day] = date.split("-").map(Number);
+  const value = new Date(Date.UTC(year, month - 1, day));
   const dateText = new Intl.DateTimeFormat("ru-RU", {
     day: "numeric",
     month: "long",
     year: "numeric",
     timeZone: "UTC",
-  }).format(new Date(Date.UTC(year, month - 1, day))).replace(/\s*г\.$/, "");
-  return [dateText, timeText].filter(Boolean).join(", ");
+  }).format(value).replace(/\s*г\.$/, "");
+  const weekdayText = new Intl.DateTimeFormat("ru-RU", {
+    weekday: "long",
+    timeZone: "UTC",
+  }).format(value);
+  return [`${dateText} (${weekdayText})`, timeText].filter(Boolean).join(", ");
 };
 
 const copyText = async (text: string) => {
