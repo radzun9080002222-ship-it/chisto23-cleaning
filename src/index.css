@@ -421,10 +421,10 @@ body:has(.manager-calc), body:has(.manager-lock) { padding-bottom: 0; background
 .manager-manual { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 0 18px 16px; }
 .manager-manual span { color: var(--mc-muted); font-size: 10px; }
 .manager-manual input { width: 130px; height: 37px; text-align: right; font-weight: 750; }
-.manager-manual-with-note > span, .manager-cleaner-payment > span { display: grid; gap: 3px; }
-.manager-manual-with-note small, .manager-cleaner-payment small { color: var(--mc-blue); font-size: 8px; font-weight: 700; }
+.manager-manual-with-note > span, .manager-expenses > span { display: grid; gap: 3px; }
+.manager-manual-with-note small, .manager-expenses small { color: var(--mc-blue); font-size: 8px; font-weight: 700; }
 .manager-manual-with-note small.markup { color: #94620a; }
-.manager-cleaner-payment { border-top: 1px dashed var(--mc-line); padding-top: 14px; }
+.manager-expenses { border-top: 1px dashed var(--mc-line); padding-top: 14px; }
 .manager-margin { margin: 0 12px 12px; border: 1px solid; border-radius: 13px; padding: 12px; }
 .manager-margin > div { display: flex; justify-content: space-between; gap: 10px; font-size: 10px; }
 .manager-margin > b { display: block; margin-top: 3px; font-size: 21px; }
@@ -446,6 +446,8 @@ body:has(.manager-calc), body:has(.manager-lock) { padding-bottom: 0; background
 .manager-form-grid label { min-width: 0; display: grid; gap: 5px; color: var(--mc-muted); font-size: 9px; font-weight: 650; }
 .manager-form-grid label.wide { grid-column: 1 / -1; }
 .manager-form-grid input, .manager-form-grid select { height: 38px; }
+.manager-time-selects { display: grid; grid-template-columns: minmax(0, 1fr) 72px; gap: 7px; }
+.manager-time-selects select:disabled { background: #f4f5f4; color: #9ba29f; cursor: not-allowed; }
 .manager-form-grid input.manager-readonly { background: #f4f5f4; color: #4e5753; cursor: default; }
 .manager-form-grid textarea { min-height: 72px; padding-top: 10px; resize: vertical; }
 .manager-actions { display: grid; gap: 8px; margin-top: 14px; }
@@ -455,6 +457,8 @@ body:has(.manager-calc), body:has(.manager-lock) { padding-bottom: 0; background
 .manager-actions button:disabled, .manager-primary:disabled { opacity: .48; cursor: default; transform: none; }
 .manager-secondary { border: 1px solid var(--mc-line); background: #fff; color: #3f4744; }
 .manager-secondary:hover { border-color: #9ebbb5; background: #f4f8f6; }
+.manager-brigadier { border-color: #b6d7d0; background: #f0f8f6; color: var(--mc-blue); }
+.manager-brigadier:hover { border-color: #78b7aa; background: #e6f4f0; }
 .manager-hint, .manager-status { display: flex; align-items: flex-start; justify-content: center; gap: 6px; margin: -2px 0 2px; color: var(--mc-muted); font-size: 9px; text-align: center; }
 .manager-status.ok { color: #08745f; }
 .manager-status.error { color: #b92f3a; }
