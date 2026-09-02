@@ -3,6 +3,7 @@ import {
   Building2,
   CalendarPlus,
   Check,
+  CircleDollarSign,
   Clipboard,
   Eraser,
   LoaderCircle,
@@ -21,6 +22,7 @@ import {
 
 type CleaningType = "wet" | "general" | "repair" | "allInclusive";
 type CounterState = Record<string, number>;
+type SendStatus = "idle" | "sending" | "ok" | "error";
 
 const ACCESS_KEY = "chisto23_calc_pin";
 const CALC_PIN = import.meta.env.VITE_CALC_PIN || "3715";
@@ -181,6 +183,29 @@ const addHours = (date: string, time: string, duration: number) => {
   return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}:00`;
 };
 
+const formatCalendarDateTime = (value: Date, timeZone: string) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone,
+  }).formatToParts(value);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value || "";
+  return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}:00`;
+};
+
+const getCurrentCalendarSlot = (timeZone: string) => {
+  const start = new Date();
+  const end = new Date(start.getTime() + 30 * 60 * 1000);
+  return {
+    startDateTime: formatCalendarDateTime(start, timeZone),
+    endDateTime: formatCalendarDateTime(end, timeZone),
+  };
+};
+
 const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
   <section className="manager-section">
     <h2>{title}</h2>
@@ -281,8 +306,10 @@ function ManagerCalculator({ pin }: { pin: string }) {
   });
   const [copied, setCopied] = useState(false);
   const [brigadierCopied, setBrigadierCopied] = useState(false);
-  const [calendarStatus, setCalendarStatus] = useState<"idle" | "sending" | "ok" | "error">("idle");
+  const [calendarStatus, setCalendarStatus] = useState<SendStatus>("idle");
   const [calendarMessage, setCalendarMessage] = useState("");
+  const [priceInquiryStatus, setPriceInquiryStatus] = useState<SendStatus>("idle");
+  const [priceInquiryMessage, setPriceInquiryMessage] = useState("");
 
   useEffect(() => {
     document.title = "Калькулятор менеджера — Вершина";
@@ -436,7 +463,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
 
   const calendarReady = calculation.lines.length > 0 && Boolean(client.date && client.time && client.name && client.phone && client.address);
   const sendToCalendar = async () => {
-    if (!calendarReady || calendarStatus === "sending") return;
+    if (!calendarReady || calendarStatus === "sending" || priceInquiryStatus === "sending") return;
     setCalendarStatus("sending");
     setCalendarMessage("");
     const hasDry = calculation.dryTotal > 0;
@@ -455,6 +482,44 @@ function ManagerCalculator({ pin }: { pin: string }) {
     } catch (error) {
       setCalendarStatus("error");
       setCalendarMessage(error instanceof Error ? error.message : "Не удалось добавить событие");
+    }
+  };
+
+  const sendPriceInquiry = async () => {
+    if (priceInquiryStatus === "sending" || calendarStatus === "sending") return;
+    setPriceInquiryStatus("sending");
+    setPriceInquiryMessage("");
+    const slot = getCurrentCalendarSlot(city.timeZone);
+    const inquiryDate = slot.startDateTime.slice(0, 10);
+    const inquiryTime = slot.startDateTime.slice(11, 16);
+    const inquiryClientRows = [
+      `Город: ${city.label}`,
+      client.name && `Имя: ${client.name}`,
+      client.phone && `Телефон: ${client.phone}`,
+      formattedDateTime && `Желаемая дата и время: ${formattedDateTime}`,
+      addressDetails && `Адрес: ${addressDetails}`,
+      client.entrance && `Подъезд: ${client.entrance}`,
+      client.intercom && `Код домофона: ${client.intercom}`,
+      client.note && `Дополнительно: ${client.note}`,
+    ].filter(Boolean).join("\n");
+    const inquiryCalculation = estimateRows
+      ? `Расчёт стоимости\n\n${estimateRows}\n\n${totalRows}`
+      : "Расчёт не заполнялся";
+    const inquiryDescription = `Статистика конверсий: узнавали цену\nДата обращения: ${formatDateTime(inquiryDate, inquiryTime)}\n\n${inquiryCalculation}\n\nДанные клиента:\n${inquiryClientRows}`;
+    try {
+      await createCalendarEvent(pin, {
+        summary: `Узнавали цену — ${city.label}${area > 0 ? `, ${area} м²` : ""}`,
+        description: inquiryDescription,
+        location: [city.label, addressDetails].filter(Boolean).join(", "),
+        startDateTime: slot.startDateTime,
+        endDateTime: slot.endDateTime,
+        timeZone: city.timeZone,
+      });
+      setPriceInquiryStatus("ok");
+      setPriceInquiryMessage("Обращение «Узнавали цену» добавлено на сегодня");
+    } catch (error) {
+      setPriceInquiryStatus("error");
+      setPriceInquiryMessage(error instanceof Error ? error.message : "Не удалось добавить обращение");
     }
   };
 
@@ -485,6 +550,8 @@ function ManagerCalculator({ pin }: { pin: string }) {
     setBrigadierCopied(false);
     setCalendarStatus("idle");
     setCalendarMessage("");
+    setPriceInquiryStatus("idle");
+    setPriceInquiryMessage("");
   };
 
   return (
@@ -597,12 +664,17 @@ function ManagerCalculator({ pin }: { pin: string }) {
               <label className="wide"><span>Дополнительно</span><textarea rows={3} placeholder="Парковка, питомцы, пожелания…" value={client.note} onChange={(event) => setClientValue("note", event.target.value)} /></label>
             </div>
             <div className="manager-actions">
-              <button type="button" className="manager-calendar" disabled={!calendarReady || calendarStatus === "sending"} onClick={sendToCalendar}>
+              <button type="button" className="manager-calendar" disabled={!calendarReady || calendarStatus === "sending" || priceInquiryStatus === "sending"} onClick={sendToCalendar}>
                 {calendarStatus === "sending" ? <LoaderCircle className="spin" size={18} /> : calendarStatus === "ok" ? <Check size={18} /> : <CalendarPlus size={18} />}
                 {calendarStatus === "sending" ? "Добавляем…" : calendarStatus === "ok" ? "Добавлено в календарь" : "Отправить в Google Calendar"}
               </button>
-              {!calendarReady && calculation.lines.length > 0 && <p className="manager-hint">Для календаря заполните дату, время, имя, телефон и адрес.</p>}
+              <button type="button" className="manager-price-inquiry" disabled={calendarStatus === "sending" || priceInquiryStatus === "sending"} onClick={sendPriceInquiry}>
+                {priceInquiryStatus === "sending" ? <LoaderCircle className="spin" size={18} /> : priceInquiryStatus === "ok" ? <Check size={18} /> : <CircleDollarSign size={18} />}
+                {priceInquiryStatus === "sending" ? "Добавляем…" : priceInquiryStatus === "ok" ? "Добавлено: узнавали цену" : "Узнавали цену"}
+              </button>
+              {!calendarReady && calculation.lines.length > 0 && <p className="manager-hint">Для обычного события заполните дату, время, имя, телефон и адрес. «Узнавали цену» работает без обязательных полей.</p>}
               {calendarMessage && <p className={`manager-status ${calendarStatus}`}><AlertCircle size={14} />{calendarMessage}</p>}
+              {priceInquiryMessage && <p className={`manager-status ${priceInquiryStatus}`}><AlertCircle size={14} />{priceInquiryMessage}</p>}
               <button type="button" className="manager-secondary" disabled={!calculation.lines.length} onClick={copyEstimate}>{copied ? <Check size={17} /> : <Clipboard size={17} />}{copied ? "Скопировано" : "Скопировать смету + данные"}</button>
               <button type="button" className="manager-secondary manager-brigadier" disabled={!calculation.lines.length} onClick={copyForBrigadier}>{brigadierCopied ? <Check size={17} /> : <Clipboard size={17} />}{brigadierCopied ? "Скопировано для бригадира" : "Скопировать для бригадира"}</button>
               <button type="button" className="manager-secondary" onClick={reset}><Eraser size={17} />Сбросить всё</button>

@@ -454,6 +454,8 @@ body:has(.manager-calc), body:has(.manager-lock) { padding-bottom: 0; background
 .manager-actions button, .manager-primary { min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 12px; padding: 0 14px; font: inherit; font-size: 11px; font-weight: 750; cursor: pointer; transition: .18s ease; }
 .manager-calendar, .manager-primary { border: 0; background: linear-gradient(115deg, var(--mc-blue), #249982); color: #fff; box-shadow: 0 9px 22px rgba(21,128,110,.22); }
 .manager-calendar:hover, .manager-primary:hover { background: linear-gradient(115deg, var(--mc-blue-dark), #15806e); transform: translateY(-1px); }
+.manager-price-inquiry { border: 1px solid #e3c575; background: linear-gradient(115deg, #fff8df, #f8e9b6); color: #76520b; }
+.manager-price-inquiry:hover { border-color: #c99f39; background: linear-gradient(115deg, #fff4c9, #f3dda0); transform: translateY(-1px); }
 .manager-actions button:disabled, .manager-primary:disabled { opacity: .48; cursor: default; transform: none; }
 .manager-secondary { border: 1px solid var(--mc-line); background: #fff; color: #3f4744; }
 .manager-secondary:hover { border-color: #9ebbb5; background: #f4f8f6; }
