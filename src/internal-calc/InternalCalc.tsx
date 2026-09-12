@@ -1,6 +1,5 @@
 import {
   AlertCircle,
-  Building2,
   CalendarPlus,
   Check,
   CircleDollarSign,
@@ -32,6 +31,9 @@ const CITIES = [
   { id: "lipetsk", label: "Липецк", timeZone: "Europe/Moscow" },
   { id: "novy-urengoy", label: "Новый Уренгой", timeZone: "Asia/Yekaterinburg" },
   { id: "moscow", label: "Москва", timeZone: "Europe/Moscow" },
+  { id: "salekhard", label: "Салехард", timeZone: "Asia/Yekaterinburg" },
+  { id: "voronezh", label: "Воронеж", timeZone: "Europe/Moscow" },
+  { id: "ryazan", label: "Рязань", timeZone: "Europe/Moscow" },
   { id: "abkhazia", label: "Абхазия", timeZone: "Europe/Moscow" },
 ] as const;
 
@@ -142,6 +144,16 @@ const DRY_CLEANING = [
 ] as const;
 
 const fmt = (value: number) => `${Math.round(value).toLocaleString("ru-RU")} ₽`;
+
+const normalizePhone = (value: string) => {
+  let digits = value.replace(/\D/g, "");
+  if (value.trim().startsWith("+7") || (digits.length === 11 && /^[78]/.test(digits))) {
+    digits = digits.slice(1);
+  }
+  const subscriberNumber = digits.slice(0, 10);
+  // The automatic country code alone is not a filled client phone number.
+  return subscriberNumber ? `+7${subscriberNumber}` : "";
+};
 
 const formatDateTime = (date: string, time: string) => {
   const timeText = time
@@ -559,13 +571,6 @@ function ManagerCalculator({ pin }: { pin: string }) {
       <header className="manager-header">
         <div className="manager-container manager-header-inner">
           <div className="manager-brand"><Sparkles size={21} /><span>Вершина</span><small>калькулятор менеджера</small></div>
-          <label className="manager-city">
-            <Building2 size={17} />
-            <span>Город</span>
-            <select value={cityId} onChange={(event) => setCityId(event.target.value as typeof cityId)}>
-              {CITIES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-            </select>
-          </label>
         </div>
       </header>
 
@@ -651,11 +656,12 @@ function ManagerCalculator({ pin }: { pin: string }) {
           <div className="manager-client">
             <h2>Данные клиента</h2>
             <div className="manager-form-grid">
+              <label className="wide"><span>Город</span><select value={cityId} onChange={(event) => setCityId(event.target.value as typeof cityId)}>{CITIES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
               <label><span>День уборки *</span><input type="date" value={client.date} onChange={(event) => setClientValue("date", event.target.value)} /></label>
               <label><span>Время *</span><span className="manager-time-selects"><select aria-label="Часы" value={client.time.split(":")[0] || ""} onChange={(event) => setClientValue("time", event.target.value ? `${event.target.value}:${client.time.split(":")[1] || "00"}` : "")}><option value="">Часы</option>{HOURS.map((hour) => <option key={hour} value={hour}>{hour}</option>)}</select><select aria-label="Минуты" disabled={!client.time} value={client.time.split(":")[1] || "00"} onChange={(event) => setClientValue("time", `${client.time.split(":")[0]}:${event.target.value}`)}>{MINUTES.map((minute) => <option key={minute} value={minute}>{minute}</option>)}</select></span></label>
               <label><span>Длительность</span><input className="manager-readonly" readOnly value={duration.label} /></label>
               <label><span>Имя *</span><input value={client.name} onChange={(event) => setClientValue("name", event.target.value)} /></label>
-              <label className="wide"><span>Телефон *</span><input type="text" placeholder="+7" value={client.phone} onChange={(event) => setClientValue("phone", event.target.value)} /></label>
+              <label className="wide"><span>Телефон *</span><input type="tel" inputMode="tel" autoComplete="tel" value={client.phone || "+7"} onChange={(event) => setClientValue("phone", normalizePhone(event.target.value))} /></label>
               <label className="wide"><span>Адрес *</span><input placeholder="Улица, дом" value={client.address} onChange={(event) => setClientValue("address", event.target.value)} /></label>
               <label><span>Этаж</span><input value={client.floor} onChange={(event) => setClientValue("floor", event.target.value)} /></label>
               <label><span>Квартира</span><input value={client.apartment} onChange={(event) => setClientValue("apartment", event.target.value)} /></label>
