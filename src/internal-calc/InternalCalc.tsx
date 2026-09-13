@@ -16,6 +16,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { CITIES, type CityId } from "../../supabase/functions/_shared/pricing";
 import PricingSettings from "./PricingSettings";
+import { calculateOrderTotal } from "./orderTotal";
 import {
   createCalendarEvent,
   loadPricing,
@@ -374,10 +375,9 @@ function ManagerCalculator({ pin }: { pin: string }) {
       minimum = pricing.cleaning[type].minimum;
     }
     if (area > 0) {
-      const raw = Math.round(area * rate * dirt);
-      const sum = Math.max(raw, minimum);
+      const sum = Math.round(area * rate * dirt);
       lines.push({
-        label: `${CLEANING_LABELS[type]}, ${area} м² × ${rate} ₽${dirt > 1 ? ` × ${dirt.toFixed(1)}` : ""}${sum > raw ? " (минимальный заказ)" : ""}`,
+        label: `${CLEANING_LABELS[type]}, ${area} м² × ${rate} ₽${dirt > 1 ? ` × ${dirt.toFixed(1)}` : ""}`,
         brigadierLabel: `${CLEANING_LABELS[type]}, ${area} м²${dirt > 1 ? `, загрязнённость ×${dirt.toFixed(1)}` : ""}`,
         sum,
         group: "cleaning",
@@ -417,9 +417,9 @@ function ManagerCalculator({ pin }: { pin: string }) {
     if (remoteTrip) lines.push({ label: "Удалённый выезд", brigadierLabel: "Удалённый выезд", sum: pricing.special.remoteTrip, group: "other" });
     if (kitchenOnly) lines.push({ label: "Выезд только на кухню", brigadierLabel: "Выезд только на кухню", sum: pricing.special.kitchen ?? 7000, group: "other" });
 
-    const total = lines.reduce((sum, line) => sum + line.sum, 0);
+    const orderTotal = calculateOrderTotal(lines, minimum, area > 0);
     const dryTotal = lines.filter((line) => line.group === "dry").reduce((sum, line) => sum + line.sum, 0);
-    return { lines, total, dryTotal, rate, minimum };
+    return { lines, ...orderTotal, dryTotal, rate, minimum };
   }, [area, bathrooms, dirt, dry, extras, glassType, kitchenOnly, mold, panoramicPrice, pricing, remoteTrip, type, windowFilm, windows]);
 
   const finalTotal = manualPrice ?? calculation.total;
@@ -457,9 +457,12 @@ function ManagerCalculator({ pin }: { pin: string }) {
     client.intercom && `Код домофона: ${client.intercom}`,
     client.note && `Дополнительно: ${client.note}`,
   ].filter(Boolean).join("\n");
-  const totalRows = hasManualPrice
+  const minimumRows = calculation.minimumAdjustment > 0
+    ? `СУММА УСЛУГ: ${fmt(calculation.subtotal)}\nДоплата до минимального заказа ${fmt(calculation.minimum)}: ${fmt(calculation.minimumAdjustment)}\n`
+    : "";
+  const totalRows = minimumRows + (hasManualPrice
     ? `ИТОГО ПО ПРАЙСУ: ${fmt(calculation.total)}\nЦЕНА ДЛЯ КЛИЕНТА: ${fmt(finalTotal)}${discountPercent > 0 ? ` (скидка ${discountPercent}%)` : ""}`
-    : `ИТОГО: ${fmt(finalTotal)}`;
+    : `ИТОГО: ${fmt(finalTotal)}`);
   const estimateText = `Расчёт стоимости уборки «Вершина»\n\n${estimateRows || "Позиции не выбраны"}\n\n${totalRows}\n\nДанные клиента:\n${clientRows}\n\nЦену фиксируем до начала работ. Оплата после приёмки по чек-листу.`;
   const calendarDescription = `Расчёт стоимости уборки «Вершина»\n\n${estimateRows || "Позиции не выбраны"}\n\n${totalRows}\nРасходы: ${fmt(dealCosts)}\nЧистая прибыль: ${fmt(margin)}\n\nДанные клиента:\n${clientRows}\n\nЦену фиксируем до начала работ. Оплата после приёмки по чек-листу.`;
   const brigadierRows = calculation.lines.map((line) => `• ${line.brigadierLabel}`).join("\n");
@@ -643,6 +646,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
             <div className="manager-summary-head"><span>Расчёт</span><small className={`source-${pricingSource}`}>{pricingSource === "supabase" ? "цены из Supabase" : pricingSource === "loading" ? "загрузка цен…" : "резервный прайс"}</small></div>
             {calculation.lines.length ? <div className="manager-lines">{calculation.lines.map((line, index) => <div key={`${line.label}-${index}`}><span>{line.label}</span><strong>{fmt(line.sum)}</strong></div>)}</div> : <div className="manager-empty">Добавьте площадь, услугу или химчистку</div>}
             <div className="manager-total"><span>Итого по прайсу</span><strong>{fmt(calculation.total)}</strong></div>
+            {calculation.minimumAdjustment > 0 && <p className="manager-hint">Сумма услуг: {fmt(calculation.subtotal)}. Доплата до минимального заказа {fmt(calculation.minimum)}: {fmt(calculation.minimumAdjustment)}.</p>}
             <label className="manager-manual manager-manual-with-note"><span>Цена для клиента{discountPercent > 0 && <small>Скидка {discountPercent}% · −{fmt(calculation.total - finalTotal)}</small>}{markupPercent > 0 && <small className="markup">Наценка {markupPercent}% · +{fmt(finalTotal - calculation.total)}</small>}</span><input type="number" min={0} value={(manualPrice ?? calculation.total) || ""} onChange={(event) => { const value = Number(event.target.value); setManualPrice(value === calculation.total ? null : Math.max(0, value || 0)); }} /></label>
             <label className="manager-manual manager-expenses"><span>Расходы<small>Другие фактические расходы, необязательно</small></span><input type="number" min={0} step={100} placeholder="0" value={expenses ?? ""} onChange={(event) => setExpenses(event.target.value === "" ? null : Math.max(0, Number(event.target.value) || 0))} /></label>
             {calculation.total > 0 && <>

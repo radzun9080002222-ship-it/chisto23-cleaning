@@ -1,6 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { CITIES, PRICING_GROUPS, validateCityId, validatePricing, setPrice } from "../supabase/functions/_shared/pricing.ts";
+import { calculateOrderTotal } from "../src/internal-calc/orderTotal.ts";
+
+test("Минимум применяется один раз к общей сумме услуг", () => {
+  // The user's example: 37 m² × 280 ₽, plus 9 700 ₽ of services.
+  assert.deepEqual(calculateOrderTotal([{ sum: 37 * 280 }, { sum: 9700 }], 12000, true), {
+    subtotal: 20060, total: 20060, minimumAdjustment: 0,
+  });
+  assert.deepEqual(calculateOrderTotal([{ sum: 5000 }, { sum: 2000 }], 12000, true), {
+    subtotal: 7000, total: 12000, minimumAdjustment: 5000,
+  });
+  assert.equal(calculateOrderTotal([{ sum: 10000 }, { sum: 2000 }], 12000, true).minimumAdjustment, 0);
+  assert.equal(calculateOrderTotal([{ sum: 2000 }], 12000, false).total, 2000);
+  assert.equal(calculateOrderTotal([], 12000, false).total, 0);
+  assert.equal(calculateOrderTotal([{ sum: 37 * 280 * 2 }, { sum: 1000 }], 12000, true).total, 21720);
+  assert.equal(calculateOrderTotal([{ sum: 1000 }, { sum: 2500 }, { sum: 1500 }], 6000, true).total, 6000);
+  assert.equal(calculateOrderTotal([{ sum: 1000 }], 0, true).total, 1000);
+});
 
 const pricing = {};
 for (const group of PRICING_GROUPS) for (const field of group.fields) setPrice(pricing, field.path, 100);
