@@ -1,19 +1,5 @@
-export type PricingConfig = {
-  cleaning: {
-    wet: { rate: number; minimum: number };
-    general: { rate: number; minimum: number };
-    repair: { rate: number; minimum: number };
-    allInclusive: {
-      standardRate: number;
-      panoramicRate: number;
-      minimum: number;
-    };
-  };
-  windows: Record<string, { usual: number; repair: number }>;
-  extras: Record<string, number>;
-  dry: Record<string, number>;
-  special: { bathroom: number; mold: number; remoteTrip: number; kitchen?: number };
-};
+import type { CityId, PricingConfig, PricingSnapshot } from "../../supabase/functions/_shared/pricing";
+export type { PricingConfig } from "../../supabase/functions/_shared/pricing";
 
 export type CalendarEventPayload = {
   summary: string;
@@ -52,9 +38,15 @@ async function callManager<T>(pin: string, action: string, payload?: unknown): P
   return result.data as T;
 }
 
-export async function loadPricing(pin: string): Promise<PricingConfig | null> {
-  return callManager<PricingConfig | null>(pin, "pricing.get");
+export async function loadPricing(pin: string, cityId: CityId): Promise<PricingConfig | null> {
+  return callManager<PricingConfig | null>(pin, "pricing.get", { cityId });
 }
+
+export const loadPricingSettings = (pin: string, cityId: CityId) =>
+  callManager<PricingSnapshot>(pin, "pricing.settings.get", { cityId });
+
+export const saveCityPricing = (pin: string, adminPin: string, cityId: CityId, pricing: PricingConfig, expectedUpdatedAt: string | null) =>
+  callManager<PricingSnapshot>(pin, "pricing.settings.save", { cityId, pricing, expectedUpdatedAt, adminPin });
 
 export async function createCalendarEvent(pin: string, payload: CalendarEventPayload) {
   return callManager<{ id: string; htmlLink?: string }>(pin, "calendar.create", payload);

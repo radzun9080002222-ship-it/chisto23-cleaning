@@ -1,3 +1,5 @@
+import { validateCityId, validatePricing, type CityId, type PricingSnapshot } from "../_shared/pricing.ts";
+
 type CalendarPayload = {
   summary: string;
   description: string;
@@ -114,16 +116,59 @@ function validateCalendarPayload(value: unknown): CalendarPayload {
   return result;
 }
 
-async function getPricing() {
+function pricingConnection() {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !serviceRoleKey) throw new Error("Supabase не настроен");
   const headers: Record<string, string> = { apikey: serviceRoleKey };
   if (serviceRoleKey.startsWith("eyJ")) headers.authorization = `Bearer ${serviceRoleKey}`;
-  const pricingResponse = await fetch(`${supabaseUrl}/rest/v1/manager_calc_pricing?id=eq.default&select=data&limit=1`, { headers });
+  return { url: `${supabaseUrl}/rest/v1/manager_calc_pricing`, headers };
+}
+
+async function readPricingRow(id: CityId | "default") {
+  const connection = pricingConnection();
+  const pricingResponse = await fetch(`${connection.url}?id=eq.${id}&select=data,updated_at&limit=1`, { headers: connection.headers });
   if (!pricingResponse.ok) throw new Error("Не удалось загрузить цены");
-  const rows = await pricingResponse.json() as Array<{ data: unknown }>;
-  return rows[0]?.data || null;
+  const rows = await pricingResponse.json() as Array<{ data: unknown; updated_at: string }>;
+  return rows[0] || null;
+}
+
+async function getPricing(cityId?: CityId) {
+  const row = cityId ? await readPricingRow(cityId) : null;
+  const fallback = row || await readPricingRow("default");
+  return fallback?.data || null;
+}
+
+async function getPricingSnapshot(cityId: CityId): Promise<PricingSnapshot> {
+  const row = await readPricingRow(cityId);
+  const fallback = row || await readPricingRow("default");
+  if (!fallback) throw new Error("Общий прайс не настроен");
+  return { pricing: validatePricing(fallback.data), updatedAt: row?.updated_at || null, inherited: !row };
+}
+
+async function savePricing(payload: Record<string, unknown>): Promise<PricingSnapshot> {
+  const expectedPin = Deno.env.get("PRICING_ADMIN_PIN");
+  if (!expectedPin || payload.adminPin !== expectedPin) throw new Error("Неверный PIN сохранения тарифов");
+  const cityId = validateCityId(payload.cityId);
+  const pricing = validatePricing(payload.pricing);
+  const revision = payload.expectedUpdatedAt;
+  if (revision !== null && (typeof revision !== "string" || revision.length > 64 || !Number.isFinite(Date.parse(revision)))) {
+    throw new Error("Загрузите тарифы заново перед сохранением");
+  }
+  const connection = pricingConnection();
+  const updatedAt = new Date().toISOString();
+  // A conditional update or unique insert prevents overwriting another manager's changes.
+  const url = revision === null ? connection.url : `${connection.url}?id=eq.${cityId}&updated_at=eq.${encodeURIComponent(revision as string)}`;
+  const savedResponse = await fetch(url, {
+    method: revision === null ? "POST" : "PATCH",
+    headers: { ...connection.headers, "content-type": "application/json", prefer: "return=representation" },
+    body: JSON.stringify({ ...(revision === null ? { id: cityId } : {}), data: pricing, updated_at: updatedAt }),
+  });
+  if (savedResponse.status === 409) throw new Error("Прайс уже изменён в другой вкладке. Загрузите свежие цены");
+  if (!savedResponse.ok) throw new Error("Не удалось сохранить тарифы в Supabase");
+  const rows = await savedResponse.json() as Array<{ data: unknown; updated_at: string }>;
+  if (!rows.length) throw new Error("Прайс уже изменён в другой вкладке. Загрузите свежие цены");
+  return { pricing: validatePricing(rows[0].data), updatedAt: rows[0].updated_at, inherited: false };
 }
 
 async function createGoogleCalendarEvent(payloadValue: unknown) {
@@ -170,7 +215,10 @@ Deno.serve(async (request) => {
 
   try {
     const body = await request.json() as { action?: string; payload?: unknown };
-    if (body.action === "pricing.get") return response(origin, 200, { ok: true, data: await getPricing() });
+    const payload = (body.payload && typeof body.payload === "object" ? body.payload : {}) as Record<string, unknown>;
+    if (body.action === "pricing.get") return response(origin, 200, { ok: true, data: await getPricing(payload.cityId === undefined ? undefined : validateCityId(payload.cityId)) });
+    if (body.action === "pricing.settings.get") return response(origin, 200, { ok: true, data: await getPricingSnapshot(validateCityId(payload.cityId)) });
+    if (body.action === "pricing.settings.save") return response(origin, 200, { ok: true, data: await savePricing(payload) });
     if (body.action === "calendar.create") return response(origin, 200, { ok: true, data: await createGoogleCalendarEvent(body.payload) });
     return response(origin, 400, { ok: false, error: "Неизвестное действие" });
   } catch (error) {
