@@ -10,9 +10,12 @@ import {
   Minus,
   Plus,
   Settings2,
+  Settings,
   Sparkles,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { CITIES, type CityId } from "../../supabase/functions/_shared/pricing";
+import PricingSettings from "./PricingSettings";
 import {
   createCalendarEvent,
   loadPricing,
@@ -25,17 +28,6 @@ type SendStatus = "idle" | "sending" | "ok" | "error";
 
 const ACCESS_KEY = "chisto23_calc_pin";
 const CALC_PIN = import.meta.env.VITE_CALC_PIN || "3715";
-
-const CITIES = [
-  { id: "sochi", label: "Сочи", timeZone: "Europe/Moscow" },
-  { id: "lipetsk", label: "Липецк", timeZone: "Europe/Moscow" },
-  { id: "novy-urengoy", label: "Новый Уренгой", timeZone: "Asia/Yekaterinburg" },
-  { id: "moscow", label: "Москва", timeZone: "Europe/Moscow" },
-  { id: "salekhard", label: "Салехард", timeZone: "Asia/Yekaterinburg" },
-  { id: "voronezh", label: "Воронеж", timeZone: "Europe/Moscow" },
-  { id: "ryazan", label: "Рязань", timeZone: "Europe/Moscow" },
-  { id: "abkhazia", label: "Абхазия", timeZone: "Europe/Moscow" },
-] as const;
 
 const CLEANING_LABELS: Record<CleaningType, string> = {
   wet: "Влажная уборка",
@@ -283,13 +275,17 @@ function PinGate({ onUnlock }: { onUnlock: (pin: string) => void }) {
 function ManagerCalculator({ pin }: { pin: string }) {
   const [pricing, setPricing] = useState(DEFAULT_PRICING);
   const [pricingSource, setPricingSource] = useState<"loading" | "supabase" | "fallback">("loading");
+  const [showPricingSettings, setShowPricingSettings] = useState(false);
+  const [pricingReload, setPricingReload] = useState(0);
+  const [loadedCityId, setLoadedCityId] = useState<CityId | null>(null);
   const [cityId, setCityId] = useState<(typeof CITIES)[number]["id"]>("sochi");
   const [type, setType] = useState<CleaningType>("general");
   const [area, setArea] = useState(0);
   const [dirt, setDirt] = useState(1);
   const [glassType, setGlassType] = useState<"standard" | "panoramic">("standard");
   const [windows, setWindows] = useState<CounterState>({});
-  const [panoramicPrice, setPanoramicPrice] = useState(1000);
+  const [panoramicOverride, setPanoramicPrice] = useState<number | null>(null);
+  const panoramicPrice = panoramicOverride ?? pricing.windows.panoramic[type === "repair" ? "repair" : "usual"];
   const [windowFilm, setWindowFilm] = useState(false);
   const [extras, setExtras] = useState<CounterState>({});
   const [dry, setDry] = useState<CounterState>({});
@@ -332,9 +328,15 @@ function ManagerCalculator({ pin }: { pin: string }) {
       document.head.appendChild(robots);
     }
     robots.content = "noindex, nofollow, noarchive";
+  }, []);
 
+  useEffect(() => {
     let cancelled = false;
-    loadPricing(pin)
+    setPricingSource("loading");
+    setLoadedCityId(null);
+    setPanoramicPrice(null);
+    setPricing(DEFAULT_PRICING);
+    loadPricing(pin, cityId)
       .then((saved) => {
         if (cancelled) return;
         if (saved) {
@@ -343,12 +345,14 @@ function ManagerCalculator({ pin }: { pin: string }) {
         } else {
           setPricingSource("fallback");
         }
+        setLoadedCityId(cityId);
       })
       .catch(() => {
-        if (!cancelled) setPricingSource("fallback");
+        if (!cancelled) { setPricing(DEFAULT_PRICING); setPricingSource("fallback"); setLoadedCityId(cityId); }
       });
     return () => { cancelled = true; };
-  }, [pin]);
+  }, [pin, cityId, pricingReload]);
+  const pricesLoading = pricingSource === "loading" || loadedCityId !== cityId;
 
   const city = CITIES.find((item) => item.id === cityId)!;
   const setClientValue = (key: keyof typeof client, value: string) => setClient((current) => ({ ...current, [key]: value }));
@@ -542,7 +546,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
     setDirt(1);
     setGlassType("standard");
     setWindows({});
-    setPanoramicPrice(1000);
+    setPanoramicPrice(null);
     setWindowFilm(false);
     setExtras({});
     setDry({});
@@ -571,6 +575,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
       <header className="manager-header">
         <div className="manager-container manager-header-inner">
           <div className="manager-brand"><Sparkles size={21} /><span>Вершина</span><small>калькулятор менеджера</small></div>
+          <button type="button" className="manager-settings-button" aria-label="Настроить цены" title="Настроить цены" onClick={() => setShowPricingSettings(true)}><Settings size={22} /></button>
         </div>
       </header>
 
@@ -617,7 +622,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
           </Section>
 
           <Section title="Химчистка">
-            <p className="manager-section-note">Цены синхронизированы с действующим прайсом chisto23.ru.</p>
+            <p className="manager-section-note">Тарифы химчистки для выбранного города. Постоянные цены можно изменить в настройках.</p>
             <div className="manager-price-list manager-price-grid">
               {DRY_CLEANING.map((item) => <div className="manager-price-row" key={item.id}><div><strong>{item.label}</strong><small>{fmt(pricing.dry[item.id])} / {item.unit}</small></div><Counter label={item.label} value={dry[item.id] || 0} onChange={(value) => updateCounter(setDry, item.id, value)} /></div>)}
             </div>
@@ -670,24 +675,25 @@ function ManagerCalculator({ pin }: { pin: string }) {
               <label className="wide"><span>Дополнительно</span><textarea rows={3} placeholder="Парковка, питомцы, пожелания…" value={client.note} onChange={(event) => setClientValue("note", event.target.value)} /></label>
             </div>
             <div className="manager-actions">
-              <button type="button" className="manager-calendar" disabled={!calendarReady || calendarStatus === "sending" || priceInquiryStatus === "sending"} onClick={sendToCalendar}>
+              <button type="button" className="manager-calendar" disabled={pricesLoading || !calendarReady || calendarStatus === "sending" || priceInquiryStatus === "sending"} onClick={sendToCalendar}>
                 {calendarStatus === "sending" ? <LoaderCircle className="spin" size={18} /> : calendarStatus === "ok" ? <Check size={18} /> : <CalendarPlus size={18} />}
                 {calendarStatus === "sending" ? "Добавляем…" : calendarStatus === "ok" ? "Добавлено в календарь" : "Отправить в Google Calendar"}
               </button>
-              <button type="button" className="manager-price-inquiry" disabled={calendarStatus === "sending" || priceInquiryStatus === "sending"} onClick={sendPriceInquiry}>
+              <button type="button" className="manager-price-inquiry" disabled={pricesLoading || calendarStatus === "sending" || priceInquiryStatus === "sending"} onClick={sendPriceInquiry}>
                 {priceInquiryStatus === "sending" ? <LoaderCircle className="spin" size={18} /> : priceInquiryStatus === "ok" ? <Check size={18} /> : <CircleDollarSign size={18} />}
                 {priceInquiryStatus === "sending" ? "Добавляем…" : priceInquiryStatus === "ok" ? "Добавлено: узнавали цену" : "Узнавали цену"}
               </button>
               {!calendarReady && calculation.lines.length > 0 && <p className="manager-hint">Для обычного события заполните дату, время, имя, телефон и адрес. «Узнавали цену» работает без обязательных полей.</p>}
               {calendarMessage && <p className={`manager-status ${calendarStatus}`}><AlertCircle size={14} />{calendarMessage}</p>}
               {priceInquiryMessage && <p className={`manager-status ${priceInquiryStatus}`}><AlertCircle size={14} />{priceInquiryMessage}</p>}
-              <button type="button" className="manager-secondary" disabled={!calculation.lines.length} onClick={copyEstimate}>{copied ? <Check size={17} /> : <Clipboard size={17} />}{copied ? "Скопировано" : "Скопировать смету + данные"}</button>
-              <button type="button" className="manager-secondary manager-brigadier" disabled={!calculation.lines.length} onClick={copyForBrigadier}>{brigadierCopied ? <Check size={17} /> : <Clipboard size={17} />}{brigadierCopied ? "Скопировано для бригадира" : "Скопировать для бригадира"}</button>
+              <button type="button" className="manager-secondary" disabled={pricesLoading || !calculation.lines.length} onClick={copyEstimate}>{copied ? <Check size={17} /> : <Clipboard size={17} />}{copied ? "Скопировано" : "Скопировать смету + данные"}</button>
+              <button type="button" className="manager-secondary manager-brigadier" disabled={pricesLoading || !calculation.lines.length} onClick={copyForBrigadier}>{brigadierCopied ? <Check size={17} /> : <Clipboard size={17} />}{brigadierCopied ? "Скопировано для бригадира" : "Скопировать для бригадира"}</button>
               <button type="button" className="manager-secondary" onClick={reset}><Eraser size={17} />Сбросить всё</button>
             </div>
           </div>
         </aside>
       </main>
+      {showPricingSettings && <PricingSettings pin={pin} initialCityId={cityId} onClose={() => setShowPricingSettings(false)} onSaved={(savedCityId) => { if (savedCityId === cityId) setPricingReload((value) => value + 1); }} />}
     </div>
   );
 }

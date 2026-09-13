@@ -456,6 +456,33 @@ body:has(.manager-calc), body:has(.manager-lock) { padding-bottom: 0; background
 .manager-actions button:disabled, .manager-primary:disabled { opacity: .48; cursor: default; transform: none; }
 .manager-secondary { border: 1px solid var(--mc-line); background: #fff; color: #3f4744; }
 .manager-secondary:hover { border-color: #9ebbb5; background: #f4f8f6; }
+.manager-settings-button { flex-shrink: 0; display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid var(--mc-line); border-radius: 12px; background: #fff; color: var(--mc-blue-dark); cursor: pointer; }
+.manager-settings-button:hover { background: #edf6f3; }
+.manager-pricing-overlay { position: fixed; inset: 0; z-index: 100; background: rgba(19,41,39,.55); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.manager-pricing-dialog { background: #fff; color: #263c36; border-radius: 20px; padding: 24px; width: min(780px,100%); max-height: 90dvh; overflow-y: auto; box-shadow: 0 20px 80px rgba(0,0,0,.25); }
+.manager-pricing-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.manager-pricing-head h2 { margin: 0; font-size: 22px; }
+.manager-pricing-head button { display: grid; place-items: center; border: 0; background: #eef4f1; border-radius: 10px; width: 36px; height: 36px; cursor: pointer; }
+.manager-pricing-dialog label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; }
+.manager-pricing-dialog input, .manager-pricing-dialog select { width: 100%; min-width: 0; min-height: 42px; padding: 9px 12px; border: 1px solid #dbe5e0; border-radius: 10px; background: #fff; color: #263c36; font: inherit; }
+.manager-pricing-city { margin: 18px 0; }
+.manager-pricing-fields { border: 0; padding: 0; margin: 0 0 18px; min-width: 0; }
+.manager-pricing-fields details { border: 1px solid #dbe5e0; border-radius: 12px; margin-bottom: 10px; padding: 12px; }
+.manager-pricing-fields summary { cursor: pointer; font-weight: 700; }
+.manager-pricing-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; margin-top: 14px; }
+.manager-pricing-dialog .manager-primary, .manager-pricing-dialog .manager-secondary { min-height: 44px; padding: 10px 16px; border-radius: 10px; font: inherit; font-size: 13px; cursor: pointer; }
+.manager-pricing-dialog button:disabled { opacity: .5; cursor: default; }
+.manager-pricing-copy { border-top: 1px solid #dbe5e0; margin-top: 24px; padding-top: 20px; }
+.manager-pricing-copy h3 { font-size: 16px; margin: 0 0 8px; }
+.manager-pricing-copy button { margin-top: 16px; }
+.manager-pricing-dialog .manager-form-error { margin-top: 16px; }
+.manager-pricing-dialog .manager-form-error button { display: block; margin-top: 10px; }
+@media (max-width: 640px) {
+  .manager-calc .manager-header-inner { flex-direction: row; align-items: center; }
+  .manager-pricing-overlay { padding: 10px; }
+  .manager-pricing-dialog { padding: 18px; max-height: 94dvh; }
+  .manager-pricing-grid { grid-template-columns: 1fr; }
+}
 .manager-brigadier { border-color: #b6d7d0; background: #f0f8f6; color: var(--mc-blue); }
 .manager-brigadier:hover { border-color: #78b7aa; background: #e6f4f0; }
 .manager-hint, .manager-status { display: flex; align-items: flex-start; justify-content: center; gap: 6px; margin: -2px 0 2px; color: var(--mc-muted); font-size: 9px; text-align: center; }
