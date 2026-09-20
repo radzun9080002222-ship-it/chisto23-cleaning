@@ -19,6 +19,7 @@ export const CITIES = [
   { id: "salekhard", label: "Салехард", timeZone: "Asia/Yekaterinburg" },
   { id: "voronezh", label: "Воронеж", timeZone: "Europe/Moscow" },
   { id: "ryazan", label: "Рязань", timeZone: "Europe/Moscow" },
+  { id: "tula", label: "Тула", timeZone: "Europe/Moscow" },
   { id: "abkhazia", label: "Абхазия", timeZone: "Europe/Moscow" },
 ] as const;
 
