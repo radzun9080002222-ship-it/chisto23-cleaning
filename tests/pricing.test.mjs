@@ -25,6 +25,7 @@ for (const group of PRICING_GROUPS) for (const field of group.fields) setPrice(p
 test("49 тарифов, города, округление и совместимость старого прайса", () => {
   assert.equal(PRICING_GROUPS.flatMap((group) => group.fields).length, 49);
   for (const city of CITIES) assert.equal(validateCityId(city.id), city.id);
+  assert.deepEqual(CITIES.find((city) => city.id === "tula"), { id: "tula", label: "Тула", timeZone: "Europe/Moscow" });
   assert.throws(() => validateCityId("default"));
   const input = structuredClone(pricing);
   input.cleaning.wet.rate = 123.456;
@@ -77,6 +78,9 @@ test("API: PIN, изоляция городов, создание, обновл�
     const inherited = (await request("pricing.settings.get", { cityId: "lipetsk" })).data;
     assert.equal(inherited.inherited, true); assert.equal(inherited.updatedAt, null);
     assert.deepEqual(inherited.pricing, pricing);
+    const tula = (await request("pricing.settings.get", { cityId: "tula" })).data;
+    assert.equal(tula.inherited, true); assert.equal(tula.updatedAt, null);
+    assert.deepEqual(tula.pricing, pricing);
     const payload = { cityId: "lipetsk", adminPin: "test-pin", pricing: structuredClone(pricing), expectedUpdatedAt: null };
     assert.equal((await request("pricing.settings.save", { ...payload, adminPin: "wrong" })).status, 400);
     assert.equal((await request("pricing.settings.save", { ...payload, cityId: "default" })).status, 400);
