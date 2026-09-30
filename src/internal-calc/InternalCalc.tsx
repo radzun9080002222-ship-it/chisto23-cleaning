@@ -16,6 +16,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { CITIES, type CityId } from "../../supabase/functions/_shared/pricing";
 import PricingSettings from "./PricingSettings";
+import { calculateDefaultExpenses } from "./expenses";
 import { calculateOrderTotal } from "./orderTotal";
 import {
   createCalendarEvent,
@@ -92,7 +93,7 @@ const DEFAULT_PRICING: PricingConfig = {
     rug: 600,
     carpet: 550,
   },
-  special: { bathroom: 6000, mold: 1500, remoteTrip: 2000, kitchen: 7000 },
+  special: { bathroom: 6000, mold: 1500, remoteTrip: 2000, kitchen: 6000, cabinet: 1000 },
 };
 
 const WINDOWS = [
@@ -290,7 +291,8 @@ function ManagerCalculator({ pin }: { pin: string }) {
   const [windowFilm, setWindowFilm] = useState(false);
   const [extras, setExtras] = useState<CounterState>({});
   const [dry, setDry] = useState<CounterState>({});
-  const [bathrooms, setBathrooms] = useState(0);
+  const [bathroom, setBathroom] = useState(false);
+  const [innerCabinets, setInnerCabinets] = useState(0);
   const [mold, setMold] = useState(false);
   const [remoteTrip, setRemoteTrip] = useState(false);
   const [kitchenOnly, setKitchenOnly] = useState(false);
@@ -409,18 +411,19 @@ function ManagerCalculator({ pin }: { pin: string }) {
         lines.push({ label, brigadierLabel: label, sum: count * pricing.dry[item.id], group: "dry" });
       }
     });
-    if (bathrooms) {
-      const label = `Отдельный санузел/ванная × ${bathrooms}`;
-      lines.push({ label, brigadierLabel: label, sum: bathrooms * pricing.special.bathroom, group: "other" });
+    if (bathroom) lines.push({ label: "Дополнительный санузел", brigadierLabel: "Дополнительный санузел", sum: pricing.special.bathroom, group: "other" });
+    if (innerCabinets) {
+      const label = `Шкафы внутри × ${innerCabinets}`;
+      lines.push({ label, brigadierLabel: label, sum: innerCabinets * pricing.special.cabinet, group: "other" });
     }
     if (mold) lines.push({ label: "Обработка плесени", brigadierLabel: "Обработка плесени", sum: pricing.special.mold, group: "other" });
     if (remoteTrip) lines.push({ label: "Удалённый выезд", brigadierLabel: "Удалённый выезд", sum: pricing.special.remoteTrip, group: "other" });
-    if (kitchenOnly) lines.push({ label: "Выезд только на кухню", brigadierLabel: "Выезд только на кухню", sum: pricing.special.kitchen ?? 7000, group: "other" });
+    if (kitchenOnly) lines.push({ label: "Выезд только на кухню", brigadierLabel: "Выезд только на кухню", sum: pricing.special.kitchen, group: "other" });
 
     const orderTotal = calculateOrderTotal(lines, minimum, area > 0);
     const dryTotal = lines.filter((line) => line.group === "dry").reduce((sum, line) => sum + line.sum, 0);
     return { lines, ...orderTotal, dryTotal, rate, minimum };
-  }, [area, bathrooms, dirt, dry, extras, glassType, kitchenOnly, mold, panoramicPrice, pricing, remoteTrip, type, windowFilm, windows]);
+  }, [area, bathroom, dirt, dry, extras, glassType, innerCabinets, kitchenOnly, mold, panoramicPrice, pricing, remoteTrip, type, windowFilm, windows]);
 
   const finalTotal = manualPrice ?? calculation.total;
   const hasManualPrice = manualPrice !== null && manualPrice !== calculation.total;
@@ -431,7 +434,8 @@ function ManagerCalculator({ pin }: { pin: string }) {
     ? Math.round((finalTotal / calculation.total - 1) * 100)
     : 0;
   const cleanerCost = cleanerPayment ?? 0;
-  const otherExpenses = expenses ?? 0;
+  const automaticExpenses = calculateDefaultExpenses(finalTotal);
+  const otherExpenses = expenses ?? automaticExpenses;
   const taxCost = finalTotal * taxPercent / 100;
   const dealCosts = otherExpenses + cleanerCost + brigadierPayment + leadCost + taxCost;
   const margin = finalTotal - dealCosts;
@@ -495,6 +499,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
         startDateTime: `${client.date}T${client.time}:00`,
         endDateTime: addHours(client.date, client.time, duration.calendarHours),
         timeZone: city.timeZone,
+        reminderPolicy: "order",
       });
       setCalendarStatus("ok");
       setCalendarMessage("Событие добавлено в Google Calendar");
@@ -533,6 +538,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
         startDateTime: slot.startDateTime,
         endDateTime: slot.endDateTime,
         timeZone: city.timeZone,
+        reminderPolicy: "none",
       });
       setPriceInquiryStatus("ok");
       setPriceInquiryMessage("Обращение «Узнавали цену» добавлено на сегодня");
@@ -553,7 +559,8 @@ function ManagerCalculator({ pin }: { pin: string }) {
     setWindowFilm(false);
     setExtras({});
     setDry({});
-    setBathrooms(0);
+    setBathroom(false);
+    setInnerCabinets(0);
     setMold(false);
     setRemoteTrip(false);
     setKitchenOnly(false);
@@ -633,10 +640,11 @@ function ManagerCalculator({ pin }: { pin: string }) {
 
           <Section title="Особые условия">
             <div className="manager-specials">
-              <label><span>Дополнительный санузел · {fmt(pricing.special.bathroom)}</span><Counter label="Дополнительный санузел" value={bathrooms} onChange={setBathrooms} /></label>
+              <label className="manager-check"><input type="checkbox" checked={bathroom} onChange={(event) => setBathroom(event.target.checked)} /><span><strong>Дополнительный санузел</strong><small>{fmt(pricing.special.bathroom)}</small></span></label>
+              <label className="manager-special-counter"><span><strong>Шкафы внутри</strong><small>{fmt(pricing.special.cabinet)} / шт.</small></span><Counter label="Шкафы внутри" value={innerCabinets} onChange={setInnerCabinets} /></label>
               <label className="manager-check"><input type="checkbox" checked={mold} onChange={(event) => setMold(event.target.checked)} /><span><strong>Обработка плесени</strong><small>{fmt(pricing.special.mold)}</small></span></label>
               <label className="manager-check"><input type="checkbox" checked={remoteTrip} onChange={(event) => setRemoteTrip(event.target.checked)} /><span><strong>Удалённый выезд</strong><small>{fmt(pricing.special.remoteTrip)}</small></span></label>
-              <label className="manager-check"><input type="checkbox" checked={kitchenOnly} onChange={(event) => setKitchenOnly(event.target.checked)} /><span><strong>Выезд только на кухню</strong><small>{fmt(pricing.special.kitchen ?? 7000)}</small></span></label>
+              <label className="manager-check"><input type="checkbox" checked={kitchenOnly} onChange={(event) => setKitchenOnly(event.target.checked)} /><span><strong>Выезд только на кухню</strong><small>{fmt(pricing.special.kitchen)}</small></span></label>
             </div>
           </Section>
         </div>
@@ -648,7 +656,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
             <div className="manager-total"><span>Итого по прайсу</span><strong>{fmt(calculation.total)}</strong></div>
             {calculation.minimumAdjustment > 0 && <p className="manager-hint">Сумма услуг: {fmt(calculation.subtotal)}. Доплата до минимального заказа {fmt(calculation.minimum)}: {fmt(calculation.minimumAdjustment)}.</p>}
             <label className="manager-manual manager-manual-with-note"><span>Цена для клиента{discountPercent > 0 && <small>Скидка {discountPercent}% · −{fmt(calculation.total - finalTotal)}</small>}{markupPercent > 0 && <small className="markup">Наценка {markupPercent}% · +{fmt(finalTotal - calculation.total)}</small>}</span><input type="number" min={0} value={(manualPrice ?? calculation.total) || ""} onChange={(event) => { const value = Number(event.target.value); setManualPrice(value === calculation.total ? null : Math.max(0, value || 0)); }} /></label>
-            <label className="manager-manual manager-expenses"><span>Расходы<small>Другие фактические расходы, необязательно</small></span><input type="number" min={0} step={100} placeholder="0" value={expenses ?? ""} onChange={(event) => setExpenses(event.target.value === "" ? null : Math.max(0, Number(event.target.value) || 0))} /></label>
+            <label className="manager-manual manager-expenses"><span>Расходы<small>{expenses === null ? "65% от цены клиента · округлено до 100 ₽" : "Скорректировано вручную · очистите для автосуммы"}</small></span><input aria-label="Расходы" type="number" min={0} step={100} value={(expenses ?? automaticExpenses) || ""} onChange={(event) => setExpenses(event.target.value === "" ? null : Math.max(0, Number(event.target.value) || 0))} /></label>
             {calculation.total > 0 && <>
               <div className={`manager-margin ${marginPercent >= 30 ? "good" : marginPercent >= 20 ? "warn" : "bad"}`}><div><span>Маржа сделки</span><strong>{fmt(margin)}</strong></div><b>{marginPercent.toFixed(0)}%</b><small>Расходы: {fmt(dealCosts)} · чистая прибыль после указанных затрат</small></div>
               <button type="button" className="manager-margin-toggle" onClick={() => setShowMarginSettings((value) => !value)}><Settings2 size={15} />{showMarginSettings ? "Скрыть параметры маржи" : "Параметры маржи"}</button>

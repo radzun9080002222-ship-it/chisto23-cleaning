@@ -1,4 +1,5 @@
 import { validateCityId, validatePricing, type CityId, type PricingSnapshot } from "../_shared/pricing.ts";
+import { calendarReminderSettings, type CalendarReminderPolicy } from "../_shared/calendar.ts";
 
 type CalendarPayload = {
   summary: string;
@@ -7,6 +8,7 @@ type CalendarPayload = {
   startDateTime: string;
   endDateTime: string;
   timeZone: string;
+  reminderPolicy: CalendarReminderPolicy;
 };
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
@@ -106,12 +108,17 @@ function validateCalendarPayload(value: unknown): CalendarPayload {
     startDateTime: cleanText(payload.startDateTime, 30),
     endDateTime: cleanText(payload.endDateTime, 30),
     timeZone: cleanText(payload.timeZone, 80),
+    // Older deployed clients did not send a policy; keep ordinary orders working during rollout.
+    reminderPolicy: payload.reminderPolicy === undefined ? "order" : payload.reminderPolicy,
   };
   if (!result.summary || !result.description || !result.location || !result.startDateTime || !result.endDateTime || !result.timeZone) {
     throw new Error("Не заполнены обязательные данные события");
   }
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(result.startDateTime) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(result.endDateTime)) {
     throw new Error("Некорректная дата события");
+  }
+  if (result.reminderPolicy !== "order" && result.reminderPolicy !== "none") {
+    throw new Error("Некорректный режим напоминаний");
   }
   return result;
 }
@@ -191,7 +198,7 @@ async function createGoogleCalendarEvent(payloadValue: unknown) {
         colorId: Deno.env.get("GOOGLE_CALENDAR_COLOR_ID") || "7",
         start: { dateTime: payload.startDateTime, timeZone: payload.timeZone },
         end: { dateTime: payload.endDateTime, timeZone: payload.timeZone },
-        reminders: { useDefault: false, overrides: [{ method: "popup", minutes: 30 }] },
+        reminders: calendarReminderSettings(payload.reminderPolicy),
       }),
     },
   );

@@ -8,7 +8,7 @@ export type PricingConfig = {
   windows: Record<string, { usual: number; repair: number }>;
   extras: Record<string, number>;
   dry: Record<string, number>;
-  special: { bathroom: number; mold: number; remoteTrip: number; kitchen?: number };
+  special: { bathroom: number; mold: number; remoteTrip: number; kitchen: number; cabinet: number };
 };
 
 export const CITIES = [
@@ -21,6 +21,8 @@ export const CITIES = [
   { id: "ryazan", label: "Рязань", timeZone: "Europe/Moscow" },
   { id: "tula", label: "Тула", timeZone: "Europe/Moscow" },
   { id: "kazan", label: "Казань", timeZone: "Europe/Moscow" },
+  { id: "volgograd", label: "Волгоград", timeZone: "Europe/Moscow" },
+  { id: "kaluga", label: "Калуга", timeZone: "Europe/Moscow" },
   { id: "abkhazia", label: "Абхазия", timeZone: "Europe/Moscow" },
 ] as const;
 
@@ -69,6 +71,7 @@ export const PRICING_GROUPS: PricingGroup[] = [
   { title: "Особые условия", fields: unitFields("special", [
     ["bathroom", "Дополнительный санузел"], ["mold", "Обработка плесени"],
     ["remoteTrip", "Удалённый выезд"], ["kitchen", "Выезд только на кухню"],
+    ["cabinet", "Шкафы внутри"],
   ]) },
 ];
 
@@ -85,7 +88,8 @@ export function readPrice(value: unknown, path: string[]): number | undefined {
     if (!current || typeof current !== "object") return undefined;
     current = (current as Record<string, unknown>)[key];
   }
-  if (current === undefined && path.join(".") === "special.kitchen") return 7000;
+  if (current === undefined && path.join(".") === "special.kitchen") return 6000;
+  if (current === undefined && path.join(".") === "special.cabinet") return 1000;
   return typeof current === "number" ? current : undefined;
 }
 
