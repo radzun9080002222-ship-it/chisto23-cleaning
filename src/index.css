@@ -398,8 +398,11 @@ body:has(.manager-calc), body:has(.manager-lock) { padding-bottom: 0; background
 .manager-check strong { font-size: 12px; }
 .manager-check small { color: var(--mc-muted); font-size: 10px; }
 .manager-specials { display: flex; align-items: center; flex-wrap: wrap; gap: 18px 28px; }
-.manager-specials > label:first-child { display: flex; align-items: center; gap: 12px; font-size: 12px; font-weight: 650; }
 .manager-specials .manager-check { margin: 0; }
+.manager-special-counter { display: flex; align-items: center; gap: 12px; color: #333c52; }
+.manager-special-counter > span { display: grid; gap: 2px; }
+.manager-special-counter strong { font-size: 12px; }
+.manager-special-counter small { color: var(--mc-muted); font-size: 10px; }
 .manager-summary { overflow: hidden; }
 .manager-summary-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 17px 18px; background: linear-gradient(120deg, #22272b, #174f47); color: #fff; }
 .manager-summary-head > span { font-size: 14px; font-weight: 750; }

@@ -1,7 +1,26 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { CITIES, PRICING_GROUPS, validateCityId, validatePricing, setPrice } from "../supabase/functions/_shared/pricing.ts";
+import { CALENDAR_REMINDERS, calendarReminderSettings } from "../supabase/functions/_shared/calendar.ts";
+import { calculateDefaultExpenses } from "../src/internal-calc/expenses.ts";
 import { calculateOrderTotal } from "../src/internal-calc/orderTotal.ts";
+
+test("Событие напоминает за сутки, за час и в момент начала", () => {
+  assert.deepEqual(CALENDAR_REMINDERS, [
+    { method: "popup", minutes: 1440 },
+    { method: "popup", minutes: 60 },
+    { method: "popup", minutes: 0 },
+  ]);
+  assert.deepEqual(calendarReminderSettings("order"), { useDefault: false, overrides: CALENDAR_REMINDERS });
+  assert.deepEqual(calendarReminderSettings("none"), { useDefault: false, overrides: [] });
+});
+
+test("Расходы по умолчанию — 65% цены клиента с округлением до 100 ₽", () => {
+  assert.equal(calculateDefaultExpenses(0), 0);
+  assert.equal(calculateDefaultExpenses(10000), 6500);
+  assert.equal(calculateDefaultExpenses(12345), 8000);
+  assert.equal(calculateDefaultExpenses(17800), 11600);
+});
 
 test("Минимум применяется один раз к общей сумме услуг", () => {
   // The user's example: 37 m² × 280 ₽, plus 9 700 ₽ of services.
@@ -22,19 +41,23 @@ test("Минимум применяется один раз к общей сум
 const pricing = {};
 for (const group of PRICING_GROUPS) for (const field of group.fields) setPrice(pricing, field.path, 100);
 
-test("49 тарифов, города, округление и совместимость старого прайса", () => {
-  assert.equal(PRICING_GROUPS.flatMap((group) => group.fields).length, 49);
+test("50 тарифов, города, округление и совместимость старого прайса", () => {
+  assert.equal(PRICING_GROUPS.flatMap((group) => group.fields).length, 50);
   for (const city of CITIES) assert.equal(validateCityId(city.id), city.id);
   assert.deepEqual(CITIES.find((city) => city.id === "tula"), { id: "tula", label: "Тула", timeZone: "Europe/Moscow" });
   assert.deepEqual(CITIES.find((city) => city.id === "kazan"), { id: "kazan", label: "Казань", timeZone: "Europe/Moscow" });
+  assert.deepEqual(CITIES.find((city) => city.id === "volgograd"), { id: "volgograd", label: "Волгоград", timeZone: "Europe/Moscow" });
+  assert.deepEqual(CITIES.find((city) => city.id === "kaluga"), { id: "kaluga", label: "Калуга", timeZone: "Europe/Moscow" });
   assert.throws(() => validateCityId("default"));
   const input = structuredClone(pricing);
   input.cleaning.wet.rate = 123.456;
   delete input.special.kitchen;
+  delete input.special.cabinet;
   input.unknown = "discard";
   const validated = validatePricing(input);
   assert.equal(validated.cleaning.wet.rate, 123.46);
-  assert.equal(validated.special.kitchen, 7000);
+  assert.equal(validated.special.kitchen, 6000);
+  assert.equal(validated.special.cabinet, 1000);
   assert.equal(validated.unknown, undefined);
   for (const invalid of [-1, Infinity, NaN, 10000001, "100", null, undefined]) {
     const bad = structuredClone(pricing); bad.cleaning.wet.rate = invalid;
@@ -85,6 +108,11 @@ test("API: PIN, изоляция городов, создание, обновл�
     const kazan = (await request("pricing.settings.get", { cityId: "kazan" })).data;
     assert.equal(kazan.inherited, true); assert.equal(kazan.updatedAt, null);
     assert.deepEqual(kazan.pricing, pricing);
+    for (const cityId of ["volgograd", "kaluga"]) {
+      const city = (await request("pricing.settings.get", { cityId })).data;
+      assert.equal(city.inherited, true); assert.equal(city.updatedAt, null);
+      assert.deepEqual(city.pricing, pricing);
+    }
     const payload = { cityId: "lipetsk", adminPin: "test-pin", pricing: structuredClone(pricing), expectedUpdatedAt: null };
     assert.equal((await request("pricing.settings.save", { ...payload, adminPin: "wrong" })).status, 400);
     assert.equal((await request("pricing.settings.save", { ...payload, cityId: "default" })).status, 400);
