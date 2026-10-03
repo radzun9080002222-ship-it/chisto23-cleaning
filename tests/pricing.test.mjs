@@ -48,6 +48,7 @@ test("50 тарифов, города, округление и совмести�
   assert.deepEqual(CITIES.find((city) => city.id === "kazan"), { id: "kazan", label: "Казань", timeZone: "Europe/Moscow" });
   assert.deepEqual(CITIES.find((city) => city.id === "volgograd"), { id: "volgograd", label: "Волгоград", timeZone: "Europe/Moscow" });
   assert.deepEqual(CITIES.find((city) => city.id === "kaluga"), { id: "kaluga", label: "Калуга", timeZone: "Europe/Moscow" });
+  assert.deepEqual(CITIES.find((city) => city.id === "balashikha"), { id: "balashikha", label: "Балашиха", timeZone: "Europe/Moscow" });
   assert.throws(() => validateCityId("default"));
   const input = structuredClone(pricing);
   input.cleaning.wet.rate = 123.456;
@@ -108,7 +109,7 @@ test("API: PIN, изоляция городов, создание, обновл�
     const kazan = (await request("pricing.settings.get", { cityId: "kazan" })).data;
     assert.equal(kazan.inherited, true); assert.equal(kazan.updatedAt, null);
     assert.deepEqual(kazan.pricing, pricing);
-    for (const cityId of ["volgograd", "kaluga"]) {
+    for (const cityId of ["volgograd", "kaluga", "balashikha"]) {
       const city = (await request("pricing.settings.get", { cityId })).data;
       assert.equal(city.inherited, true); assert.equal(city.updatedAt, null);
       assert.deepEqual(city.pricing, pricing);
