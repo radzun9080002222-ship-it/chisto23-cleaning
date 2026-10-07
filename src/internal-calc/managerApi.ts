@@ -2,6 +2,7 @@ import type { CityId, PricingConfig, PricingSnapshot } from "../../supabase/func
 export type { PricingConfig } from "../../supabase/functions/_shared/pricing";
 
 export type CalendarEventPayload = {
+  cityId: CityId;
   summary: string;
   description: string;
   location: string;

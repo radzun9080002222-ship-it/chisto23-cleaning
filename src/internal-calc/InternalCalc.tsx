@@ -358,6 +358,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
   const pricesLoading = pricingSource === "loading" || loadedCityId !== cityId;
 
   const city = CITIES.find((item) => item.id === cityId)!;
+  const isUnknownCity = cityId === "unknown";
   const setClientValue = (key: keyof typeof client, value: string) => setClient((current) => ({ ...current, [key]: value }));
   const updateCounter = (setter: React.Dispatch<React.SetStateAction<CounterState>>, id: string, value: number) => {
     setter((current) => ({ ...current, [id]: Math.max(0, value) }));
@@ -484,15 +485,16 @@ function ManagerCalculator({ pin }: { pin: string }) {
     window.setTimeout(() => setBrigadierCopied(false), 2200);
   };
 
-  const calendarReady = calculation.lines.length > 0 && Boolean(client.date && client.time && client.name && client.phone && client.address);
+  const calendarReady = !isUnknownCity && calculation.lines.length > 0 && Boolean(client.date && client.time && client.name && client.phone && client.address);
   const sendToCalendar = async () => {
-    if (!calendarReady || calendarStatus === "sending" || priceInquiryStatus === "sending") return;
+    if (isUnknownCity || !calendarReady || calendarStatus === "sending" || priceInquiryStatus === "sending") return;
     setCalendarStatus("sending");
     setCalendarMessage("");
     const hasDry = calculation.dryTotal > 0;
     const baseTitle = area > 0 ? `${CLEANING_LABELS[type]}, ${area} м²` : "Химчистка мебели";
     try {
       await createCalendarEvent(pin, {
+        cityId,
         summary: `${baseTitle}${hasDry && area > 0 ? " + Химчистка" : ""}`,
         description: calendarDescription,
         location: `${city.label}, ${addressDetails}`,
@@ -532,6 +534,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
     const inquiryDescription = `Статистика конверсий: узнавали цену\nДата обращения: ${formatDateTime(inquiryDate, inquiryTime)}\n\n${inquiryCalculation}\n\nДанные клиента:\n${inquiryClientRows}`;
     try {
       await createCalendarEvent(pin, {
+        cityId,
         summary: `Узнавали цену — ${city.label}${area > 0 ? `, ${area} м²` : ""}`,
         description: inquiryDescription,
         location: [city.label, addressDetails].filter(Boolean).join(", "),
@@ -687,7 +690,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
               <label className="wide"><span>Дополнительно</span><textarea rows={3} placeholder="Парковка, питомцы, пожелания…" value={client.note} onChange={(event) => setClientValue("note", event.target.value)} /></label>
             </div>
             <div className="manager-actions">
-              <button type="button" className="manager-calendar" disabled={pricesLoading || !calendarReady || calendarStatus === "sending" || priceInquiryStatus === "sending"} onClick={sendToCalendar}>
+              <button type="button" className="manager-calendar" disabled={isUnknownCity || pricesLoading || !calendarReady || calendarStatus === "sending" || priceInquiryStatus === "sending"} onClick={sendToCalendar}>
                 {calendarStatus === "sending" ? <LoaderCircle className="spin" size={18} /> : calendarStatus === "ok" ? <Check size={18} /> : <CalendarPlus size={18} />}
                 {calendarStatus === "sending" ? "Добавляем…" : calendarStatus === "ok" ? "Добавлено в календарь" : "Отправить в Google Calendar"}
               </button>
@@ -695,11 +698,13 @@ function ManagerCalculator({ pin }: { pin: string }) {
                 {priceInquiryStatus === "sending" ? <LoaderCircle className="spin" size={18} /> : priceInquiryStatus === "ok" ? <Check size={18} /> : <CircleDollarSign size={18} />}
                 {priceInquiryStatus === "sending" ? "Добавляем…" : priceInquiryStatus === "ok" ? "Добавлено: узнавали цену" : "Узнавали цену"}
               </button>
-              {!calendarReady && calculation.lines.length > 0 && <p className="manager-hint">Для обычного события заполните дату, время, имя, телефон и адрес. «Узнавали цену» работает без обязательных полей.</p>}
+              {isUnknownCity
+                ? <p className="manager-hint">Для города «Не определен» доступно только действие «Узнавали цену».</p>
+                : !calendarReady && calculation.lines.length > 0 && <p className="manager-hint">Для обычного события заполните дату, время, имя, телефон и адрес. «Узнавали цену» работает без обязательных полей.</p>}
               {calendarMessage && <p className={`manager-status ${calendarStatus}`}><AlertCircle size={14} />{calendarMessage}</p>}
               {priceInquiryMessage && <p className={`manager-status ${priceInquiryStatus}`}><AlertCircle size={14} />{priceInquiryMessage}</p>}
-              <button type="button" className="manager-secondary" disabled={pricesLoading || !calculation.lines.length} onClick={copyEstimate}>{copied ? <Check size={17} /> : <Clipboard size={17} />}{copied ? "Скопировано" : "Скопировать смету + данные"}</button>
-              <button type="button" className="manager-secondary manager-brigadier" disabled={pricesLoading || !calculation.lines.length} onClick={copyForBrigadier}>{brigadierCopied ? <Check size={17} /> : <Clipboard size={17} />}{brigadierCopied ? "Скопировано для бригадира" : "Скопировать для бригадира"}</button>
+              <button type="button" className="manager-secondary" disabled={isUnknownCity || pricesLoading || !calculation.lines.length} onClick={copyEstimate}>{copied ? <Check size={17} /> : <Clipboard size={17} />}{copied ? "Скопировано" : "Скопировать смету + данные"}</button>
+              <button type="button" className="manager-secondary manager-brigadier" disabled={isUnknownCity || pricesLoading || !calculation.lines.length} onClick={copyForBrigadier}>{brigadierCopied ? <Check size={17} /> : <Clipboard size={17} />}{brigadierCopied ? "Скопировано для бригадира" : "Скопировать для бригадира"}</button>
               <button type="button" className="manager-secondary" onClick={reset}><Eraser size={17} />Сбросить всё</button>
             </div>
           </div>

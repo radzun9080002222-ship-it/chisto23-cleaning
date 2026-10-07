@@ -1,5 +1,5 @@
-import { validateCityId, validatePricing, type CityId, type PricingSnapshot } from "../_shared/pricing.ts";
-import { calendarReminderSettings, type CalendarReminderPolicy } from "../_shared/calendar.ts";
+import { validateCityId, validatePricing, validatePricingCityId, type CityId, type PricingSnapshot } from "../_shared/pricing.ts";
+import { assertCalendarActionAllowed, calendarReminderSettings, type CalendarReminderPolicy } from "../_shared/calendar.ts";
 
 type CalendarPayload = {
   summary: string;
@@ -9,6 +9,7 @@ type CalendarPayload = {
   endDateTime: string;
   timeZone: string;
   reminderPolicy: CalendarReminderPolicy;
+  cityId?: CityId;
 };
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
@@ -110,6 +111,7 @@ function validateCalendarPayload(value: unknown): CalendarPayload {
     timeZone: cleanText(payload.timeZone, 80),
     // Older deployed clients did not send a policy; keep ordinary orders working during rollout.
     reminderPolicy: payload.reminderPolicy === undefined ? "order" : payload.reminderPolicy,
+    cityId: payload.cityId === undefined ? undefined : validateCityId(payload.cityId),
   };
   if (!result.summary || !result.description || !result.location || !result.startDateTime || !result.endDateTime || !result.timeZone) {
     throw new Error("Не заполнены обязательные данные события");
@@ -120,6 +122,7 @@ function validateCalendarPayload(value: unknown): CalendarPayload {
   if (result.reminderPolicy !== "order" && result.reminderPolicy !== "none") {
     throw new Error("Некорректный режим напоминаний");
   }
+  assertCalendarActionAllowed(result.cityId, result.reminderPolicy);
   return result;
 }
 
@@ -156,7 +159,7 @@ async function getPricingSnapshot(cityId: CityId): Promise<PricingSnapshot> {
 async function savePricing(payload: Record<string, unknown>): Promise<PricingSnapshot> {
   const expectedPin = Deno.env.get("PRICING_ADMIN_PIN");
   if (!expectedPin || payload.adminPin !== expectedPin) throw new Error("Неверный PIN сохранения тарифов");
-  const cityId = validateCityId(payload.cityId);
+  const cityId = validatePricingCityId(payload.cityId);
   const pricing = validatePricing(payload.pricing);
   const revision = payload.expectedUpdatedAt;
   if (revision !== null && (typeof revision !== "string" || revision.length > 64 || !Number.isFinite(Date.parse(revision)))) {
@@ -224,7 +227,7 @@ Deno.serve(async (request) => {
     const body = await request.json() as { action?: string; payload?: unknown };
     const payload = (body.payload && typeof body.payload === "object" ? body.payload : {}) as Record<string, unknown>;
     if (body.action === "pricing.get") return response(origin, 200, { ok: true, data: await getPricing(payload.cityId === undefined ? undefined : validateCityId(payload.cityId)) });
-    if (body.action === "pricing.settings.get") return response(origin, 200, { ok: true, data: await getPricingSnapshot(validateCityId(payload.cityId)) });
+    if (body.action === "pricing.settings.get") return response(origin, 200, { ok: true, data: await getPricingSnapshot(validatePricingCityId(payload.cityId)) });
     if (body.action === "pricing.settings.save") return response(origin, 200, { ok: true, data: await savePricing(payload) });
     if (body.action === "calendar.create") return response(origin, 200, { ok: true, data: await createGoogleCalendarEvent(body.payload) });
     return response(origin, 400, { ok: false, error: "Неизвестное действие" });
