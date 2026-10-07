@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CITIES, PRICING_GROUPS, validateCityId, validatePricing, setPrice } from "../supabase/functions/_shared/pricing.ts";
-import { CALENDAR_REMINDERS, calendarReminderSettings } from "../supabase/functions/_shared/calendar.ts";
+import { CITIES, PRICING_GROUPS, validateCityId, validatePricingCityId, validatePricing, setPrice } from "../supabase/functions/_shared/pricing.ts";
+import { CALENDAR_REMINDERS, assertCalendarActionAllowed, calendarReminderSettings } from "../supabase/functions/_shared/calendar.ts";
 import { calculateDefaultExpenses } from "../src/internal-calc/expenses.ts";
 import { calculateOrderTotal } from "../src/internal-calc/orderTotal.ts";
 
@@ -13,6 +13,9 @@ test("Событие напоминает за сутки, за час и в м�
   ]);
   assert.deepEqual(calendarReminderSettings("order"), { useDefault: false, overrides: CALENDAR_REMINDERS });
   assert.deepEqual(calendarReminderSettings("none"), { useDefault: false, overrides: [] });
+  assert.doesNotThrow(() => assertCalendarActionAllowed("unknown", "none"));
+  assert.throws(() => assertCalendarActionAllowed("unknown", "order"), /только действие «Узнавали цену»/);
+  assert.doesNotThrow(() => assertCalendarActionAllowed("sochi", "order"));
 });
 
 test("Расходы по умолчанию — 65% цены клиента с округлением до 100 ₽", () => {
@@ -49,6 +52,8 @@ test("50 тарифов, города, округление и совмести�
   assert.deepEqual(CITIES.find((city) => city.id === "volgograd"), { id: "volgograd", label: "Волгоград", timeZone: "Europe/Moscow" });
   assert.deepEqual(CITIES.find((city) => city.id === "kaluga"), { id: "kaluga", label: "Калуга", timeZone: "Europe/Moscow" });
   assert.deepEqual(CITIES.find((city) => city.id === "balashikha"), { id: "balashikha", label: "Балашиха", timeZone: "Europe/Moscow" });
+  assert.deepEqual(CITIES.find((city) => city.id === "unknown"), { id: "unknown", label: "Не определен", timeZone: "Europe/Moscow" });
+  assert.throws(() => validatePricingCityId("unknown"), /отдельный прайс не настраивается/);
   assert.throws(() => validateCityId("default"));
   const input = structuredClone(pricing);
   input.cleaning.wet.rate = 123.456;
@@ -123,6 +128,8 @@ test("API: PIN, изоляция городов, создание, обновл�
     assert.equal(created.status, 200); assert.equal(created.data.inherited, false);
     assert.equal((await request("pricing.get", { cityId: "lipetsk" })).data.cleaning.wet.rate, 160);
     assert.equal((await request("pricing.get", { cityId: "sochi" })).data.cleaning.wet.rate, 100);
+    assert.equal((await request("pricing.get", { cityId: "unknown" })).data.cleaning.wet.rate, 100);
+    assert.equal((await request("pricing.settings.get", { cityId: "unknown" })).status, 400);
     assert.equal((await request("pricing.settings.save", payload)).status, 400);
     const updated = await request("pricing.settings.save", { ...payload, expectedUpdatedAt: created.data.updatedAt });
     assert.equal(updated.status, 200);

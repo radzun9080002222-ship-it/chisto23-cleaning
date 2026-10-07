@@ -12,6 +12,7 @@ export type PricingConfig = {
 };
 
 export const CITIES = [
+  { id: "unknown", label: "Не определен", timeZone: "Europe/Moscow" },
   { id: "sochi", label: "Сочи", timeZone: "Europe/Moscow" },
   { id: "lipetsk", label: "Липецк", timeZone: "Europe/Moscow" },
   { id: "novy-urengoy", label: "Новый Уренгой", timeZone: "Asia/Yekaterinburg" },
@@ -28,6 +29,7 @@ export const CITIES = [
 ] as const;
 
 export type CityId = (typeof CITIES)[number]["id"];
+export type PricingCityId = Exclude<CityId, "unknown">;
 export type PricingSnapshot = { pricing: PricingConfig; updatedAt: string | null; inherited: boolean };
 export type PricingField = { path: string[]; label: string };
 export type PricingGroup = { title: string; fields: PricingField[] };
@@ -81,6 +83,12 @@ export function validateCityId(value: unknown): CityId {
     throw new Error("Выберите город из списка");
   }
   return value as CityId;
+}
+
+export function validatePricingCityId(value: unknown): PricingCityId {
+  const cityId = validateCityId(value);
+  if (cityId === "unknown") throw new Error("Для города «Не определен» отдельный прайс не настраивается");
+  return cityId;
 }
 
 export function readPrice(value: unknown, path: string[]): number | undefined {
