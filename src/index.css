@@ -456,6 +456,17 @@ body:has(.manager-calc), body:has(.manager-lock) { padding-bottom: 0; background
 .manager-calendar:hover, .manager-primary:hover { background: linear-gradient(115deg, var(--mc-blue-dark), #15806e); transform: translateY(-1px); }
 .manager-price-inquiry { border: 1px solid #e3c575; background: linear-gradient(115deg, #fff8df, #f8e9b6); color: #76520b; }
 .manager-price-inquiry:hover { border-color: #c99f39; background: linear-gradient(115deg, #fff4c9, #f3dda0); transform: translateY(-1px); }
+.manager-follow-up { border: 1px solid #d6a72c; background: #f5ce58; color: #513b06; }
+.manager-follow-up:hover { background: #efc23d; }
+.manager-pricing-dialog.manager-follow-up-dialog { width: min(520px, calc(100% - 24px)); border: 0; margin: auto; }
+.manager-follow-up-dialog::backdrop { background: rgba(19,41,39,.55); }
+.manager-follow-up-fields { border: 0; margin: 18px 0; padding: 0; display: grid; gap: 12px; min-width: 0; }
+.manager-follow-up-fields .manager-pricing-grid { margin: 0; }
+.manager-follow-up-fields textarea { width: 100%; border: 1px solid #dbe5e0; border-radius: 10px; padding: 10px 12px; font: inherit; resize: vertical; }
+.manager-follow-up-quick { display: flex; gap: 8px; }
+.manager-follow-up-dialog .manager-primary { width: 100%; }
+.manager-follow-up-dialog .manager-form-error { margin-bottom: 14px; }
+.manager-status a { color: inherit; text-decoration: underline; }
 .manager-actions button:disabled, .manager-primary:disabled { opacity: .48; cursor: default; transform: none; }
 .manager-secondary { border: 1px solid var(--mc-line); background: #fff; color: #3f4744; }
 .manager-secondary:hover { border-color: #9ebbb5; background: #f4f8f6; }

@@ -9,7 +9,7 @@ export type CalendarEventPayload = {
   startDateTime: string;
   endDateTime: string;
   timeZone: string;
-  reminderPolicy: "order" | "none";
+  reminderPolicy: "order" | "none" | "followUp";
 };
 
 type ManagerResponse<T> = {
