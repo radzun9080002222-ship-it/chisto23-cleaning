@@ -1,5 +1,6 @@
-import { validateCityId, validatePricing, validatePricingCityId, type CityId, type PricingSnapshot } from "../_shared/pricing.ts";
-import { assertCalendarActionAllowed, calendarReminderSettings, type CalendarReminderPolicy } from "../_shared/calendar.ts";
+import { CITIES, validateCityId, validatePricing, validatePricingCityId, type CityId, type PricingSnapshot } from "../_shared/pricing.ts";
+import { assertCalendarActionAllowed, calendarEventOptions, type CalendarReminderPolicy } from "../_shared/calendar.ts";
+import { followUpSlot } from "../_shared/followUp.ts";
 
 type CalendarPayload = {
   summary: string;
@@ -119,10 +120,15 @@ function validateCalendarPayload(value: unknown): CalendarPayload {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(result.startDateTime) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(result.endDateTime)) {
     throw new Error("Некорректная дата события");
   }
-  if (result.reminderPolicy !== "order" && result.reminderPolicy !== "none") {
+  if (result.reminderPolicy !== "order" && result.reminderPolicy !== "none" && result.reminderPolicy !== "followUp") {
     throw new Error("Некорректный режим напоминаний");
   }
   assertCalendarActionAllowed(result.cityId, result.reminderPolicy);
+  if (result.reminderPolicy === "followUp") {
+    if (!result.cityId) throw new Error("Выберите город для следующего контакта");
+    result.timeZone = CITIES.find((city) => city.id === result.cityId)!.timeZone;
+    result.endDateTime = followUpSlot(result.startDateTime, result.timeZone).endDateTime;
+  }
   return result;
 }
 
@@ -198,10 +204,9 @@ async function createGoogleCalendarEvent(payloadValue: unknown) {
         summary: payload.summary,
         description: payload.description,
         location: payload.location,
-        colorId: Deno.env.get("GOOGLE_CALENDAR_COLOR_ID") || "7",
+        ...calendarEventOptions(payload.reminderPolicy, Deno.env.get("GOOGLE_CALENDAR_COLOR_ID") || "7"),
         start: { dateTime: payload.startDateTime, timeZone: payload.timeZone },
         end: { dateTime: payload.endDateTime, timeZone: payload.timeZone },
-        reminders: calendarReminderSettings(payload.reminderPolicy),
       }),
     },
   );

@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { CITIES, PRICING_GROUPS, validateCityId, validatePricingCityId, validatePricing, setPrice } from "../supabase/functions/_shared/pricing.ts";
-import { CALENDAR_REMINDERS, assertCalendarActionAllowed, calendarReminderSettings } from "../supabase/functions/_shared/calendar.ts";
+import { CALENDAR_REMINDERS, assertCalendarActionAllowed, calendarReminderSettings, calendarEventOptions } from "../supabase/functions/_shared/calendar.ts";
+import { followUpSlot, localCalendarTime } from "../supabase/functions/_shared/followUp.ts";
 import { calculateDefaultExpenses } from "../src/internal-calc/expenses.ts";
 import { calculateOrderTotal } from "../src/internal-calc/orderTotal.ts";
 
@@ -16,6 +17,26 @@ test("Событие напоминает за сутки, за час и в м�
   assert.doesNotThrow(() => assertCalendarActionAllowed("unknown", "none"));
   assert.throws(() => assertCalendarActionAllowed("unknown", "order"), /только действие «Узнавали цену»/);
   assert.doesNotThrow(() => assertCalendarActionAllowed("sochi", "order"));
+});
+
+test("Следующий контакт: 15 минут, жёлтый, свободное время и одно напоминание", () => {
+  assert.deepEqual(calendarEventOptions("followUp", "7"), {
+    colorId: "5", transparency: "transparent",
+    reminders: { useDefault: false, overrides: [{ method: "popup", minutes: 10 }] },
+  });
+  assert.equal(calendarEventOptions("order", "2").colorId, "2");
+  assert.equal(calendarEventOptions("order").transparency, "opaque");
+  const now = new Date("2026-10-18T10:00:00Z");
+  assert.equal(localCalendarTime(now, "Europe/Moscow"), "2026-10-18T13:00:00");
+  assert.equal(localCalendarTime(now, "Asia/Yekaterinburg"), "2026-10-18T15:00:00");
+  assert.deepEqual(followUpSlot("2026-12-31T23:50:00", "Europe/Moscow", now), {
+    startDateTime: "2026-12-31T23:50:00", endDateTime: "2027-01-01T00:05:00",
+  });
+  for (const invalid of ["2026-02-30T10:00:00", "2026-10-18T25:00:00", "", "2026-10-18T13:00:00"]) {
+    assert.throws(() => followUpSlot(invalid, "Europe/Moscow", now));
+  }
+  assert.throws(() => followUpSlot("2026-10-18T14:00:00", "Asia/Yekaterinburg", now), /будущее/);
+  assert.throws(() => assertCalendarActionAllowed("unknown", "followUp"));
 });
 
 test("Расходы по умолчанию — 65% цены клиента с округлением до 100 ₽", () => {
@@ -74,14 +95,24 @@ test("50 тарифов, города, округление и совмести�
 
 test("API: PIN, изоляция городов, создание, обновление, конфликт, копирование", async () => {
   let handler;
+  const keyPair = await crypto.subtle.generateKey({ name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" }, true, ["sign", "verify"]);
+  const testPrivateKey = Buffer.from(await crypto.subtle.exportKey("pkcs8", keyPair.privateKey)).toString("base64");
+  const calendarEvents = [];
   const originalFetch = globalThis.fetch, originalDeno = globalThis.Deno;
   const rows = new Map([["default", { data: structuredClone(pricing), updated_at: "2026-01-01T00:00:00.000Z" }]]);
   globalThis.Deno = {
-    env: { get: (key) => ({ CALC_PIN: "test-pin", PRICING_ADMIN_PIN: "test-pin", SUPABASE_URL: "https://test.invalid", SUPABASE_SERVICE_ROLE_KEY: "test-key" })[key] },
+    env: { get: (key) => ({ CALC_PIN: "test-pin", PRICING_ADMIN_PIN: "test-pin", SUPABASE_URL: "https://test.invalid", SUPABASE_SERVICE_ROLE_KEY: "test-key", GOOGLE_SERVICE_ACCOUNT_EMAIL: "test@example.invalid", GOOGLE_PRIVATE_KEY: testPrivateKey, GOOGLE_CALENDAR_ID: "test-calendar" })[key] },
     serve: (callback) => { handler = callback; },
   };
   globalThis.fetch = async (input, options = {}) => {
     const url = new URL(input), method = options.method || "GET";
+    if (url.origin === "https://oauth2.googleapis.com") return Response.json({ access_token: "mock-token" });
+    if (url.origin === "https://www.googleapis.com") {
+      assert.equal(url.pathname, "/calendar/v3/calendars/test-calendar/events");
+      assert.equal(options.headers.authorization, "Bearer mock-token");
+      calendarEvents.push(JSON.parse(options.body));
+      return Response.json({ id: "mock-event", htmlLink: "https://calendar.google.com/calendar/event?eid=mock" });
+    }
     assert.equal(url.origin, "https://test.invalid");
     assert.equal(options.headers.apikey, "test-key");
     const id = url.searchParams.get("id")?.slice(3);
@@ -139,5 +170,19 @@ test("API: PIN, изоляция городов, создание, обновл�
     assert.equal(copied.status, 200);
     assert.deepEqual((await request("pricing.get", { cityId: "voronezh" })).data, updated.data.pricing);
     assert.deepEqual(rows.get("default").data, pricing);
+    const followUp = { cityId: "novy-urengoy", summary: "На подтверждение: Думает", description: "Синтетическое обращение", location: "Новый Уренгой", startDateTime: "2099-12-31T23:50:00", endDateTime: "2100-01-01T06:00:00", timeZone: "Europe/Moscow", reminderPolicy: "followUp" };
+    assert.equal((await request("calendar.create", followUp)).status, 200);
+    assert.equal(calendarEvents.length, 1);
+    assert.deepEqual(calendarEvents[0].start, { dateTime: "2099-12-31T23:50:00", timeZone: "Asia/Yekaterinburg" });
+    assert.deepEqual(calendarEvents[0].end, { dateTime: "2100-01-01T00:05:00", timeZone: "Asia/Yekaterinburg" });
+    assert.equal(calendarEvents[0].colorId, "5");
+    assert.equal(calendarEvents[0].transparency, "transparent");
+    assert.deepEqual(calendarEvents[0].reminders, { useDefault: false, overrides: [{ method: "popup", minutes: 10 }] });
+    for (const override of [{ cityId: "unknown" }, { cityId: undefined }, { startDateTime: "2099-02-30T10:00:00" }, { startDateTime: "2020-01-01T10:00:00" }]) {
+      assert.equal((await request("calendar.create", { ...followUp, ...override })).status, 400);
+    }
+    assert.equal(calendarEvents.length, 1, "Невалидные контакты не отправляются в Google");
+    assert.equal((await request("calendar.create", { ...followUp, reminderPolicy: "none", cityId: "unknown" })).status, 200);
+    assert.deepEqual(calendarEvents[1].reminders, { useDefault: false, overrides: [] });
   } finally { globalThis.fetch = originalFetch; globalThis.Deno = originalDeno; }
 });
