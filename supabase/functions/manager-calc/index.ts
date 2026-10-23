@@ -1,6 +1,7 @@
 import { CITIES, validateCityId, validatePricing, validatePricingCityId, type CityId, type PricingSnapshot } from "../_shared/pricing.ts";
-import { assertCalendarActionAllowed, calendarEventOptions, type CalendarReminderPolicy } from "../_shared/calendar.ts";
+import { appendCreationDate, assertCalendarActionAllowed, calendarEventOptions, type CalendarReminderPolicy } from "../_shared/calendar.ts";
 import { followUpSlot } from "../_shared/followUp.ts";
+import { disableCalculatorReminders } from "../_shared/calendarMaintenance.ts";
 
 type CalendarPayload = {
   summary: string;
@@ -189,11 +190,12 @@ async function savePricing(payload: Record<string, unknown>): Promise<PricingSna
 
 async function createGoogleCalendarEvent(payloadValue: unknown) {
   const payload = validateCalendarPayload(payloadValue);
+  const createdAt = new Date();
   const calendarId = Deno.env.get("GOOGLE_CALENDAR_ID");
   if (!calendarId) throw new Error("Календарь не настроен на сервере");
   const accessToken = await getGoogleAccessToken();
   const eventResponse = await fetch(
-    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?sendUpdates=none`,
     {
       method: "POST",
       headers: {
@@ -202,7 +204,8 @@ async function createGoogleCalendarEvent(payloadValue: unknown) {
       },
       body: JSON.stringify({
         summary: payload.summary,
-        description: payload.description,
+        description: appendCreationDate(payload.description, createdAt, payload.timeZone),
+        extendedProperties: { private: { source: "vershina-manager-calc", kind: payload.reminderPolicy, createdAt: createdAt.toISOString() } },
         location: payload.location,
         ...calendarEventOptions(payload.reminderPolicy, Deno.env.get("GOOGLE_CALENDAR_COLOR_ID") || "7"),
         start: { dateTime: payload.startDateTime, timeZone: payload.timeZone },
@@ -216,6 +219,14 @@ async function createGoogleCalendarEvent(payloadValue: unknown) {
     throw new Error("Google Calendar отклонил событие");
   }
   return { id: event.id as string, htmlLink: event.htmlLink as string | undefined };
+}
+
+async function removeOldReminders(payload: Record<string, unknown>) {
+  const adminPin = Deno.env.get("PRICING_ADMIN_PIN");
+  if (!adminPin || payload.adminPin !== adminPin) throw new Error("Неверный PIN администратора");
+  const calendarId = Deno.env.get("GOOGLE_CALENDAR_ID");
+  if (!calendarId) throw new Error("Календарь не настроен на сервере");
+  return disableCalculatorReminders(fetch, calendarId, await getGoogleAccessToken(), payload.apply === true);
 }
 
 Deno.serve(async (request) => {
@@ -235,6 +246,7 @@ Deno.serve(async (request) => {
     if (body.action === "pricing.settings.get") return response(origin, 200, { ok: true, data: await getPricingSnapshot(validatePricingCityId(payload.cityId)) });
     if (body.action === "pricing.settings.save") return response(origin, 200, { ok: true, data: await savePricing(payload) });
     if (body.action === "calendar.create") return response(origin, 200, { ok: true, data: await createGoogleCalendarEvent(body.payload) });
+    if (body.action === "calendar.reminders.disable") return response(origin, 200, { ok: true, data: await removeOldReminders(payload) });
     return response(origin, 400, { ok: false, error: "Неизвестное действие" });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Внутренняя ошибка";

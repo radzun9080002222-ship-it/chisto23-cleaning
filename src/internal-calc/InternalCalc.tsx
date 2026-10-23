@@ -21,6 +21,7 @@ import FollowUpDialog, { type FollowUpDetails } from "./FollowUpDialog";
 import { followUpSlot } from "../../supabase/functions/_shared/followUp";
 import { calculateDefaultExpenses } from "./expenses";
 import { calculateOrderTotal } from "./orderTotal";
+import { buildBrigadierEstimate, buildOrderSummary } from "./estimateText";
 import {
   createCalendarEvent,
   loadPricing,
@@ -81,9 +82,9 @@ const DEFAULT_PRICING: PricingConfig = {
     seams: 3000,
   },
   dry: {
-    sofa: 3500,
-    corner: 4900,
-    sofa3: 6500,
+    sofa: 4500,
+    corner: 5900,
+    sofa3: 7300,
     mattress1: 1500,
     mattress2: 2600,
     headboard: 1500,
@@ -126,7 +127,7 @@ const EXTRAS = [
 const DRY_CLEANING = [
   { id: "sofa", label: "Диван стандарт", unit: "шт." },
   { id: "corner", label: "Диван угловой", unit: "шт." },
-  { id: "sofa3", label: "Диван трёхместный", unit: "шт." },
+  { id: "sofa3", label: "Диван буквой П", unit: "шт." },
   { id: "mattress1", label: "Матрас односпальный, 1 сторона", unit: "шт." },
   { id: "mattress2", label: "Матрас двухспальный, 1 сторона", unit: "шт." },
   { id: "headboard", label: "Кровать — изголовье", unit: "шт." },
@@ -373,7 +374,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
   };
 
   const calculation = useMemo(() => {
-    const lines: { label: string; brigadierLabel: string; sum: number; group: "cleaning" | "dry" | "other" }[] = [];
+    const lines: { label: string; brigadierLabel: string; sum: number; group: "cleaning" | "windows" | "dry" | "other" }[] = [];
     let rate = 0;
     let minimum = 0;
     if (type === "allInclusive") {
@@ -403,7 +404,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
         : pricing.windows[item.id][type === "repair" ? "repair" : "usual"];
       const sum = count * base * (type === "repair" && windowFilm ? 2 : 1);
       const label = `${item.label} × ${count}${type === "repair" && windowFilm ? " (плёнка ×2)" : ""}`;
-      lines.push({ label, brigadierLabel: label, sum, group: "other" });
+      lines.push({ label, brigadierLabel: label, sum, group: "windows" });
     });
 
     EXTRAS.forEach((item) => {
@@ -478,8 +479,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
     : `ИТОГО: ${fmt(finalTotal)}`);
   const estimateText = `Расчёт стоимости уборки «Вершина»\n\n${estimateRows || "Позиции не выбраны"}\n\n${totalRows}\n\nДанные клиента:\n${clientRows}\n\nЦену фиксируем до начала работ. Оплата после приёмки по чек-листу.`;
   const calendarDescription = `Расчёт стоимости уборки «Вершина»\n\n${estimateRows || "Позиции не выбраны"}\n\n${totalRows}\nРасходы: ${fmt(dealCosts)}\nЧистая прибыль: ${fmt(margin)}\n\nДанные клиента:\n${clientRows}\n\nЦену фиксируем до начала работ. Оплата после приёмки по чек-листу.`;
-  const brigadierRows = calculation.lines.map((line) => `• ${line.brigadierLabel}`).join("\n");
-  const brigadierText = `${brigadierRows || "Позиции не выбраны"}\n\nДанные клиента:\n${clientRows}`;
+  const brigadierText = buildBrigadierEstimate(estimateRows, totalRows, clientRows, otherExpenses);
 
   const copyEstimate = async () => {
     await copyText(estimateText);
@@ -498,12 +498,16 @@ function ManagerCalculator({ pin }: { pin: string }) {
     if (isUnknownCity || !calendarReady || calendarBusy) return;
     setCalendarStatus("sending");
     setCalendarMessage("");
-    const hasDry = calculation.dryTotal > 0;
-    const baseTitle = area > 0 ? `${CLEANING_LABELS[type]}, ${area} м²` : "Химчистка мебели";
+    const summary = buildOrderSummary({
+      area, cleaningLabel: CLEANING_LABELS[type],
+      hasWindows: calculation.lines.some((line) => line.group === "windows"),
+      hasDry: calculation.lines.some((line) => line.group === "dry"),
+      hasOther: calculation.lines.some((line) => line.group === "other"),
+    });
     try {
       await createCalendarEvent(pin, {
         cityId,
-        summary: `${baseTitle}${hasDry && area > 0 ? " + Химчистка" : ""}`,
+        summary,
         description: calendarDescription,
         location: `${city.label}, ${addressDetails}`,
         startDateTime: `${client.date}T${client.time}:00`,
