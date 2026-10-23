@@ -284,7 +284,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
   const [showPricingSettings, setShowPricingSettings] = useState(false);
   const [pricingReload, setPricingReload] = useState(0);
   const [loadedCityId, setLoadedCityId] = useState<CityId | null>(null);
-  const [cityId, setCityId] = useState<(typeof CITIES)[number]["id"]>("sochi");
+  const [cityId, setCityId] = useState<(typeof CITIES)[number]["id"]>("unknown");
   const [type, setType] = useState<CleaningType>("general");
   const [area, setArea] = useState(0);
   const [dirt, setDirt] = useState(1);
@@ -590,7 +590,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
   };
 
   const reset = () => {
-    setCityId("sochi");
+    setCityId("unknown");
     setType("general");
     setArea(0);
     setDirt(1);

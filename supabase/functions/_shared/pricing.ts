@@ -12,6 +12,7 @@ export type PricingConfig = {
 };
 
 export const CITIES = [
+  { id: "unknown", label: "Не определен", timeZone: "Europe/Moscow" },
   { id: "abkhazia", label: "Абхазия", timeZone: "Europe/Moscow" },
   { id: "balashikha", label: "Балашиха", timeZone: "Europe/Moscow" },
   { id: "volgograd", label: "Волгоград", timeZone: "Europe/Moscow" },
@@ -21,7 +22,6 @@ export const CITIES = [
   { id: "kirov", label: "Киров", timeZone: "Europe/Moscow" },
   { id: "lipetsk", label: "Липецк", timeZone: "Europe/Moscow" },
   { id: "moscow", label: "Москва", timeZone: "Europe/Moscow" },
-  { id: "unknown", label: "Не определен", timeZone: "Europe/Moscow" },
   { id: "novy-urengoy", label: "Новый Уренгой", timeZone: "Asia/Yekaterinburg" },
   { id: "ryazan", label: "Рязань", timeZone: "Europe/Moscow" },
   { id: "salekhard", label: "Салехард", timeZone: "Asia/Yekaterinburg" },
