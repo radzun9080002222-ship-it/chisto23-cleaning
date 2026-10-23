@@ -125,7 +125,8 @@ for (const group of PRICING_GROUPS) for (const field of group.fields) setPrice(p
 test("50 тарифов, города, округление и совместимость старого прайса", () => {
   assert.equal(PRICING_GROUPS.flatMap((group) => group.fields).length, 50);
   for (const city of CITIES) assert.equal(validateCityId(city.id), city.id);
-  const labels = CITIES.map((city) => city.label);
+  assert.equal(CITIES[0].id, "unknown");
+  const labels = CITIES.slice(1).map((city) => city.label);
   assert.deepEqual(labels, [...labels].sort((a, b) => a.localeCompare(b, "ru")));
   assert.deepEqual(CITIES.find((city) => city.id === "tula"), { id: "tula", label: "Тула", timeZone: "Europe/Moscow" });
   assert.deepEqual(CITIES.find((city) => city.id === "kazan"), { id: "kazan", label: "Казань", timeZone: "Europe/Moscow" });
