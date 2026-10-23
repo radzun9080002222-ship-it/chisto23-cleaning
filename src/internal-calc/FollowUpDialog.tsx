@@ -64,7 +64,7 @@ export default function FollowUpDialog({ cityLabel, timeZone, onClose, onSend }:
         <p className="manager-section-note">Время города {cityLabel}. Это время звонка, а не начала уборки.</p>
         <label><span>Комментарий</span><textarea rows={3} maxLength={2000} placeholder="Например: согласует с мужем, позвонить после 18:00" value={details.comment} onChange={(event) => setDetails({ ...details, comment: event.target.value })} /></label>
       </fieldset>
-      <p className="manager-section-note">Жёлтое событие на 15 минут · напоминание за 10 минут · занятость «Свободен».</p>
+      <p className="manager-section-note">Жёлтое событие на 15 минут · без напоминаний · занятость «Свободен».</p>
       {error && <p className="manager-form-error" role="alert">{error}</p>}
       <button type="submit" className="manager-primary" disabled={busy}>{busy && <LoaderCircle className="spin" size={18} />}{busy ? "Добавляем…" : "Добавить следующий контакт"}</button>
     </form>

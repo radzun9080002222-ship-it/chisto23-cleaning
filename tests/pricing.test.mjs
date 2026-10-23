@@ -1,28 +1,26 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { CITIES, PRICING_GROUPS, validateCityId, validatePricingCityId, validatePricing, setPrice } from "../supabase/functions/_shared/pricing.ts";
-import { CALENDAR_REMINDERS, assertCalendarActionAllowed, calendarReminderSettings, calendarEventOptions } from "../supabase/functions/_shared/calendar.ts";
+import { appendCreationDate, assertCalendarActionAllowed, calendarReminderSettings, calendarEventOptions, isCalculatorEvent } from "../supabase/functions/_shared/calendar.ts";
+import { disableCalculatorReminders } from "../supabase/functions/_shared/calendarMaintenance.ts";
 import { followUpSlot, localCalendarTime } from "../supabase/functions/_shared/followUp.ts";
 import { calculateDefaultExpenses } from "../src/internal-calc/expenses.ts";
 import { calculateOrderTotal } from "../src/internal-calc/orderTotal.ts";
+import { buildBrigadierEstimate, buildOrderSummary } from "../src/internal-calc/estimateText.ts";
 
-test("Событие напоминает за сутки, за час и в момент начала", () => {
-  assert.deepEqual(CALENDAR_REMINDERS, [
-    { method: "popup", minutes: 1440 },
-    { method: "popup", minutes: 60 },
-    { method: "popup", minutes: 0 },
-  ]);
-  assert.deepEqual(calendarReminderSettings("order"), { useDefault: false, overrides: CALENDAR_REMINDERS });
-  assert.deepEqual(calendarReminderSettings("none"), { useDefault: false, overrides: [] });
+test("Все типы событий создаются без напоминаний", () => {
+  for (const policy of ["order", "none", "followUp"]) {
+    assert.deepEqual(calendarReminderSettings(policy), { useDefault: false, overrides: [] });
+  }
   assert.doesNotThrow(() => assertCalendarActionAllowed("unknown", "none"));
   assert.throws(() => assertCalendarActionAllowed("unknown", "order"), /только действие «Узнавали цену»/);
   assert.doesNotThrow(() => assertCalendarActionAllowed("sochi", "order"));
 });
 
-test("Следующий контакт: 15 минут, жёлтый, свободное время и одно напоминание", () => {
+test("Следующий контакт: 15 минут, жёлтый, свободное время, без напоминаний", () => {
   assert.deepEqual(calendarEventOptions("followUp", "7"), {
     colorId: "5", transparency: "transparent",
-    reminders: { useDefault: false, overrides: [{ method: "popup", minutes: 10 }] },
+    reminders: { useDefault: false, overrides: [] },
   });
   assert.equal(calendarEventOptions("order", "2").colorId, "2");
   assert.equal(calendarEventOptions("order").transparency, "opaque");
@@ -37,6 +35,65 @@ test("Следующий контакт: 15 минут, жёлтый, свобо
   }
   assert.throws(() => followUpSlot("2026-10-18T14:00:00", "Asia/Yekaterinburg", now), /будущее/);
   assert.throws(() => assertCalendarActionAllowed("unknown", "followUp"));
+});
+
+test("Заголовок соответствует окнам, химчистке и смешанному заказу", () => {
+  const selection = { area: 0, cleaningLabel: "Генеральная уборка", hasWindows: false, hasDry: false, hasOther: false };
+  assert.equal(buildOrderSummary({ ...selection, hasWindows: true }), "Мойка окон");
+  assert.equal(buildOrderSummary({ ...selection, hasDry: true }), "Химчистка мебели");
+  assert.equal(buildOrderSummary({ ...selection, hasOther: true }), "Дополнительные услуги");
+  assert.equal(buildOrderSummary({ ...selection, hasWindows: true, hasDry: true }), "Мойка окон + Химчистка мебели");
+  assert.equal(buildOrderSummary({ ...selection, area: 60, hasWindows: true }), "Генеральная уборка, 60 м² + Мойка окон");
+});
+
+test("Полная смета бригадиру заканчивается фактическим значением поля расходов", () => {
+  const rows = "• Влажная уборка, 60 м² × 160 ₽ — 9 600 ₽";
+  const client = "Город: Липецк\nИмя: Тест\nТелефон: +70000000000\nАдрес: Тест\nПодъезд: 2";
+  const automatic = buildBrigadierEstimate(rows, "ИТОГО: 9 600 ₽", client, calculateDefaultExpenses(9600));
+  assert.ok(automatic.includes(rows));
+  assert.ok(automatic.includes(client));
+  assert.ok(automatic.includes("ИТОГО: 9 600 ₽"));
+  assert.match(automatic, /Елена, ваши 6\s200 рублей$/);
+  assert.match(buildBrigadierEstimate(rows, "ИТОГО: 9 600 ₽", client, 5100), /Елена, ваши 5\s100 рублей$/);
+  assert.ok(!automatic.includes("Цену фиксируем"));
+});
+
+test("Дата создания добавляется последней строкой в часовом поясе города", () => {
+  const description = "Расчёт стоимости уборки «Вершина»\n\nИТОГО: 10000 ₽";
+  const result = appendCreationDate(description, new Date("2026-10-24T22:05:00Z"), "Europe/Moscow");
+  assert.ok(result.startsWith(description + "\n\nДата создания: "));
+  assert.match(result.split("\n").at(-1), /25 октября 2026 \(воскресенье\), 1:05$/);
+});
+
+test("Отключение старых напоминаний затрагивает только события калькулятора", async () => {
+  const events = [
+    { id: "order", etag: '"v1"', description: "Расчёт стоимости уборки «Вершина»\nСмета", reminders: { useDefault: false, overrides: [{ method: "popup", minutes: 60 }] } },
+    { id: "inquiry", etag: '"v2"', description: "Статистика конверсий: узнавали цену", reminders: { useDefault: false, overrides: [] } },
+    { id: "followUp", etag: '"v3"', description: "Следующий контакт — заказ ещё не подтверждён", reminders: { useDefault: true } },
+    { id: "manual", etag: '"v4"', description: "Личная встреча", reminders: { useDefault: true } },
+    { id: "deleted", status: "cancelled", etag: '"v5"', extendedProperties: { private: { source: "vershina-manager-calc" } } },
+  ];
+  const patches = [];
+  const request = async (input, options = {}) => {
+    const url = new URL(input);
+    if (options.method !== "PATCH") return Response.json({ items: events });
+    assert.equal(url.searchParams.get("sendUpdates"), "none");
+    const event = events.find((item) => url.pathname.endsWith(`/${item.id}`));
+    assert.equal(options.headers["if-match"], event.etag);
+    const body = JSON.parse(options.body);
+    assert.deepEqual(body, { reminders: { useDefault: false, overrides: [] } });
+    patches.push(event.id);
+    event.reminders = body.reminders;
+    return Response.json({ id: event.id });
+  };
+  assert.equal((await disableCalculatorReminders(request, "test", "test")).needingUpdate, 2);
+  assert.equal(patches.length, 0, "Предпросмотр ничего не меняет");
+  const applied = await disableCalculatorReminders(request, "test", "test", true);
+  assert.equal(applied.updated, 2);
+  assert.equal(applied.remaining, 0);
+  assert.deepEqual(patches, ["order", "followUp"]);
+  assert.equal((await disableCalculatorReminders(request, "test", "test")).needingUpdate, 0);
+  assert.equal(isCalculatorEvent({ id: "manual", description: "Скопировал текст: Расчёт стоимости уборки «Вершина»" }), false);
 });
 
 test("Расходы по умолчанию — 65% цены клиента с округлением до 100 ₽", () => {
@@ -68,6 +125,8 @@ for (const group of PRICING_GROUPS) for (const field of group.fields) setPrice(p
 test("50 тарифов, города, округление и совместимость старого прайса", () => {
   assert.equal(PRICING_GROUPS.flatMap((group) => group.fields).length, 50);
   for (const city of CITIES) assert.equal(validateCityId(city.id), city.id);
+  const labels = CITIES.map((city) => city.label);
+  assert.deepEqual(labels, [...labels].sort((a, b) => a.localeCompare(b, "ru")));
   assert.deepEqual(CITIES.find((city) => city.id === "tula"), { id: "tula", label: "Тула", timeZone: "Europe/Moscow" });
   assert.deepEqual(CITIES.find((city) => city.id === "kazan"), { id: "kazan", label: "Казань", timeZone: "Europe/Moscow" });
   assert.deepEqual(CITIES.find((city) => city.id === "volgograd"), { id: "volgograd", label: "Волгоград", timeZone: "Europe/Moscow" });
@@ -145,7 +204,7 @@ test("API: PIN, изоляция городов, создание, обновл�
     const kazan = (await request("pricing.settings.get", { cityId: "kazan" })).data;
     assert.equal(kazan.inherited, true); assert.equal(kazan.updatedAt, null);
     assert.deepEqual(kazan.pricing, pricing);
-    for (const cityId of ["volgograd", "kaluga", "balashikha"]) {
+    for (const cityId of ["volgograd", "kaluga", "balashikha", "tver", "kirov", "cheboksary"]) {
       const city = (await request("pricing.settings.get", { cityId })).data;
       assert.equal(city.inherited, true); assert.equal(city.updatedAt, null);
       assert.deepEqual(city.pricing, pricing);
@@ -177,7 +236,10 @@ test("API: PIN, изоляция городов, создание, обновл�
     assert.deepEqual(calendarEvents[0].end, { dateTime: "2100-01-01T00:05:00", timeZone: "Asia/Yekaterinburg" });
     assert.equal(calendarEvents[0].colorId, "5");
     assert.equal(calendarEvents[0].transparency, "transparent");
-    assert.deepEqual(calendarEvents[0].reminders, { useDefault: false, overrides: [{ method: "popup", minutes: 10 }] });
+    assert.deepEqual(calendarEvents[0].reminders, { useDefault: false, overrides: [] });
+    assert.match(calendarEvents[0].description, /^Синтетическое обращение\n\nДата создания: /);
+    assert.equal(calendarEvents[0].extendedProperties.private.source, "vershina-manager-calc");
+    assert.ok(Number.isFinite(Date.parse(calendarEvents[0].extendedProperties.private.createdAt)));
     for (const override of [{ cityId: "unknown" }, { cityId: undefined }, { startDateTime: "2099-02-30T10:00:00" }, { startDateTime: "2020-01-01T10:00:00" }]) {
       assert.equal((await request("calendar.create", { ...followUp, ...override })).status, 400);
     }

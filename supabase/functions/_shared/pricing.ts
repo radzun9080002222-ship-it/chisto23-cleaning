@@ -12,20 +12,23 @@ export type PricingConfig = {
 };
 
 export const CITIES = [
-  { id: "unknown", label: "Не определен", timeZone: "Europe/Moscow" },
-  { id: "sochi", label: "Сочи", timeZone: "Europe/Moscow" },
-  { id: "lipetsk", label: "Липецк", timeZone: "Europe/Moscow" },
-  { id: "novy-urengoy", label: "Новый Уренгой", timeZone: "Asia/Yekaterinburg" },
-  { id: "moscow", label: "Москва", timeZone: "Europe/Moscow" },
-  { id: "salekhard", label: "Салехард", timeZone: "Asia/Yekaterinburg" },
-  { id: "voronezh", label: "Воронеж", timeZone: "Europe/Moscow" },
-  { id: "ryazan", label: "Рязань", timeZone: "Europe/Moscow" },
-  { id: "tula", label: "Тула", timeZone: "Europe/Moscow" },
-  { id: "kazan", label: "Казань", timeZone: "Europe/Moscow" },
-  { id: "volgograd", label: "Волгоград", timeZone: "Europe/Moscow" },
-  { id: "kaluga", label: "Калуга", timeZone: "Europe/Moscow" },
-  { id: "balashikha", label: "Балашиха", timeZone: "Europe/Moscow" },
   { id: "abkhazia", label: "Абхазия", timeZone: "Europe/Moscow" },
+  { id: "balashikha", label: "Балашиха", timeZone: "Europe/Moscow" },
+  { id: "volgograd", label: "Волгоград", timeZone: "Europe/Moscow" },
+  { id: "voronezh", label: "Воронеж", timeZone: "Europe/Moscow" },
+  { id: "kazan", label: "Казань", timeZone: "Europe/Moscow" },
+  { id: "kaluga", label: "Калуга", timeZone: "Europe/Moscow" },
+  { id: "kirov", label: "Киров", timeZone: "Europe/Moscow" },
+  { id: "lipetsk", label: "Липецк", timeZone: "Europe/Moscow" },
+  { id: "moscow", label: "Москва", timeZone: "Europe/Moscow" },
+  { id: "unknown", label: "Не определен", timeZone: "Europe/Moscow" },
+  { id: "novy-urengoy", label: "Новый Уренгой", timeZone: "Asia/Yekaterinburg" },
+  { id: "ryazan", label: "Рязань", timeZone: "Europe/Moscow" },
+  { id: "salekhard", label: "Салехард", timeZone: "Asia/Yekaterinburg" },
+  { id: "sochi", label: "Сочи", timeZone: "Europe/Moscow" },
+  { id: "tver", label: "Тверь", timeZone: "Europe/Moscow" },
+  { id: "tula", label: "Тула", timeZone: "Europe/Moscow" },
+  { id: "cheboksary", label: "Чебоксары", timeZone: "Europe/Moscow" },
 ] as const;
 
 export type CityId = (typeof CITIES)[number]["id"];
@@ -65,7 +68,7 @@ export const PRICING_GROUPS: PricingGroup[] = [
     ["airConditioner", "Кондиционер (сетка)"], ["seams", "Швы отпаривателем · ₽/комната"],
   ]) },
   { title: "Химчистка", fields: unitFields("dry", [
-    ["sofa", "Диван стандарт"], ["corner", "Диван угловой"], ["sofa3", "Диван трёхместный"],
+    ["sofa", "Диван стандарт"], ["corner", "Диван угловой"], ["sofa3", "Диван буквой П"],
     ["mattress1", "Матрас односпальный · 1 сторона"], ["mattress2", "Матрас двухспальный · 1 сторона"],
     ["headboard", "Кровать · изголовье"], ["bedside", "Кровать · тканевый борт"], ["pillow", "Подушка"],
     ["armchair", "Кресло"], ["bench", "Банкетка"], ["pouf", "Пуфик"], ["chair", "Стул"],
