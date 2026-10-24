@@ -3,7 +3,10 @@ import {
   CalendarPlus,
   PhoneCall,
   Check,
+  ChevronDown,
   CircleDollarSign,
+  MapPin,
+  Receipt,
   Clipboard,
   Eraser,
   LoaderCircle,
@@ -14,7 +17,7 @@ import {
   Settings,
   Sparkles,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CITIES, type CityId } from "../../supabase/functions/_shared/pricing";
 import PricingSettings from "./PricingSettings";
 import FollowUpDialog, { type FollowUpDetails } from "./FollowUpDialog";
@@ -216,23 +219,70 @@ const getCurrentCalendarSlot = (timeZone: string) => {
   };
 };
 
-const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
-  <section className="manager-section">
-    <h2>{title}</h2>
-    {children}
+type SectionId = "cleaning" | "windows" | "extras" | "dry" | "special";
+
+const SECTION_NAV: { id: SectionId | "summary" | "client"; label: string }[] = [
+  { id: "cleaning", label: "Уборка" },
+  { id: "windows", label: "Окна" },
+  { id: "extras", label: "Допы" },
+  { id: "dry", label: "Химчистка" },
+  { id: "special", label: "Особые" },
+  { id: "summary", label: "Смета" },
+  { id: "client", label: "Клиент" },
+];
+
+const isCompactScreen = () => typeof window !== "undefined" && window.matchMedia("(max-width: 820px)").matches;
+
+const Section = ({ id, index, title, badge, open, onToggle, children }: {
+  id: SectionId;
+  index: string;
+  title: string;
+  badge?: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) => (
+  <section id={`mc-${id}`} className={`mc-card mc-section${open ? " open" : ""}${badge ? " has-items" : ""}`}>
+    <button type="button" className="mc-section-head" aria-expanded={open} aria-controls={`mc-${id}-body`} onClick={onToggle}>
+      <span className="mc-section-index">{index}</span>
+      <span className="mc-section-title">{title}</span>
+      {badge && <span className="mc-section-badge">{badge}</span>}
+      <ChevronDown className="mc-chevron" size={20} aria-hidden="true" />
+    </button>
+    {open && <div id={`mc-${id}-body`} className="mc-section-body">{children}</div>}
   </section>
 );
 
 const Counter = ({ value, onChange, label }: { value: number; onChange: (value: number) => void; label: string }) => (
-  <div className="manager-counter">
+  <div className={`mc-counter${value > 0 ? " active" : ""}`}>
     <button type="button" onClick={() => onChange(Math.max(0, value - 1))} disabled={value === 0} aria-label={`Уменьшить: ${label}`}>
-      <Minus size={15} />
+      <Minus size={17} />
     </button>
-    <span>{value}</span>
+    <span aria-live="polite">{value}</span>
     <button type="button" onClick={() => onChange(value + 1)} aria-label={`Увеличить: ${label}`}>
-      <Plus size={15} />
+      <Plus size={17} />
     </button>
   </div>
+);
+
+const PriceRow = ({ label, value, onChange, children }: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+  children: React.ReactNode;
+}) => (
+  <div className={`mc-row${value > 0 ? " active" : ""}`}>
+    <div className="mc-row-text"><strong>{label}</strong>{children}</div>
+    <Counter label={label} value={value} onChange={onChange} />
+  </div>
+);
+
+const Toggle = ({ checked, onChange, title, note }: { checked: boolean; onChange: (value: boolean) => void; title: string; note: string }) => (
+  <label className={`mc-toggle${checked ? " on" : ""}`}>
+    <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+    <span className="mc-toggle-text"><strong>{title}</strong><small>{note}</small></span>
+    <span className="mc-switch" aria-hidden="true" />
+  </label>
 );
 
 function PinGate({ onUnlock }: { onUnlock: (pin: string) => void }) {
@@ -330,6 +380,25 @@ function ManagerCalculator({ pin }: { pin: string }) {
   const [followUpMessage, setFollowUpMessage] = useState("");
   const [followUpLink, setFollowUpLink] = useState("");
   const calendarBusy = calendarStatus === "sending" || priceInquiryStatus === "sending" || followUpStatus === "sending";
+  const [openSections, setOpenSections] = useState<Record<SectionId, boolean>>(() => {
+    const compact = isCompactScreen();
+    return { cleaning: true, windows: !compact, extras: !compact, dry: !compact, special: !compact };
+  });
+  const sidebarRef = useRef<HTMLElement>(null);
+  const [sidebarInView, setSidebarInView] = useState(false);
+  const toggleSection = (id: SectionId) => setOpenSections((current) => ({ ...current, [id]: !current[id] }));
+  const jumpTo = (id: SectionId | "summary" | "client") => {
+    if (id !== "summary" && id !== "client") setOpenSections((current) => ({ ...current, [id]: true }));
+    window.requestAnimationFrame(() => document.getElementById(`mc-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
+
+  useEffect(() => {
+    const element = sidebarRef.current;
+    if (!element || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(([entry]) => setSidebarInView(entry.isIntersecting), { rootMargin: "0px 0px -96px 0px" });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     document.title = "Калькулятор менеджера — Вершина";
@@ -451,6 +520,32 @@ function ManagerCalculator({ pin }: { pin: string }) {
   const margin = finalTotal - dealCosts;
   const marginPercent = finalTotal > 0 ? (margin / finalTotal) * 100 : 0;
   const duration = CLEANING_DURATION[type];
+  const marginTone = marginPercent >= 30 ? "good" : marginPercent >= 20 ? "warn" : "bad";
+
+  const groupSum = (group: "cleaning" | "windows" | "dry" | "other") => calculation.lines.filter((line) => line.group === group).reduce((sum, line) => sum + line.sum, 0);
+  const countSelected = (state: CounterState) => Object.values(state).filter((value) => value > 0).length;
+  const extrasSum = EXTRAS.reduce((sum, item) => sum + (extras[item.id] || 0) * pricing.extras[item.id], 0);
+  const extrasCount = countSelected(extras);
+  const specialCount = [bathroom, innerCabinets > 0, mold, remoteTrip, kitchenOnly].filter(Boolean).length;
+  const badgeText = (count: number, sum: number) => (count > 0 ? fmt(sum) : undefined);
+  const sectionBadges: Record<SectionId, string | undefined> = {
+    cleaning: area > 0 ? fmt(groupSum("cleaning")) : undefined,
+    windows: badgeText(countSelected(windows), groupSum("windows")),
+    extras: badgeText(extrasCount, extrasSum),
+    dry: badgeText(countSelected(dry), groupSum("dry")),
+    special: badgeText(specialCount, groupSum("other") - extrasSum),
+  };
+  const navCounts: Partial<Record<string, number>> = {
+    cleaning: area > 0 ? 1 : 0,
+    windows: countSelected(windows),
+    extras: extrasCount,
+    dry: countSelected(dry),
+    special: specialCount,
+    summary: calculation.lines.length,
+  };
+  const cleaningRateLabel = (item: CleaningType) => item === "allInclusive"
+    ? `${pricing.cleaning.allInclusive.standardRate}–${pricing.cleaning.allInclusive.panoramicRate} ₽/м²`
+    : `${pricing.cleaning[item].rate} ₽/м²`;
 
   const addressDetails = [
     client.address,
@@ -626,134 +721,218 @@ function ManagerCalculator({ pin }: { pin: string }) {
   };
 
   return (
-    <div className="manager-calc">
-      <header className="manager-header">
-        <div className="manager-container manager-header-inner">
-          <div className="manager-brand"><Sparkles size={21} /><span>Вершина</span><small>калькулятор менеджера</small></div>
-          <button type="button" className="manager-settings-button" aria-label="Настроить цены" title="Настроить цены" onClick={() => setShowPricingSettings(true)}><Settings size={22} /></button>
+    <div className="mc-app">
+      <header className="mc-header">
+        <div className="mc-container mc-header-bar">
+          <div className="mc-brand">
+            <span className="mc-logo" aria-hidden="true"><Sparkles size={18} /></span>
+            <span className="mc-brand-text"><strong>Вершина</strong><small>калькулятор менеджера</small></span>
+          </div>
+          <label className="mc-city">
+            <MapPin size={16} aria-hidden="true" />
+            <span className="mc-visually-hidden">Город</span>
+            <select value={cityId} onChange={(event) => setCityId(event.target.value as typeof cityId)}>
+              {CITIES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+            </select>
+            <ChevronDown size={16} aria-hidden="true" />
+          </label>
+          <button type="button" className="mc-icon-button" aria-label="Настроить цены" title="Настроить цены" onClick={() => setShowPricingSettings(true)}><Settings size={20} /></button>
         </div>
+        <nav className="mc-container mc-nav" aria-label="Разделы калькулятора">
+          {SECTION_NAV.map((item) => (
+            <button key={item.id} type="button" className={navCounts[item.id] ? "filled" : ""} onClick={() => jumpTo(item.id)}>
+              {item.label}{navCounts[item.id] ? <b>{navCounts[item.id]}</b> : null}
+            </button>
+          ))}
+        </nav>
       </header>
 
-      <main className="manager-container manager-layout">
-        <div className="manager-main-column">
-          <Section title="Уборка">
-            <div className="manager-tabs">
+      <main className="mc-container mc-layout">
+        <div className="mc-main">
+          <Section id="cleaning" index="01" title="Уборка" badge={sectionBadges.cleaning} open={openSections.cleaning} onToggle={() => toggleSection("cleaning")}>
+            <div className="mc-types" role="group" aria-label="Вид уборки">
               {(Object.keys(CLEANING_LABELS) as CleaningType[]).map((item) => (
-                <button key={item} type="button" className={type === item ? "active" : ""} onClick={() => setType(item)}>{CLEANING_LABELS[item]}</button>
+                <button key={item} type="button" aria-pressed={type === item} className={type === item ? "active" : ""} onClick={() => setType(item)}>
+                  <strong>{CLEANING_LABELS[item]}</strong>
+                  <small>{cleaningRateLabel(item)}</small>
+                </button>
               ))}
             </div>
             {type === "allInclusive" && (
-              <div className="manager-inline-options">
+              <div className="mc-segment" role="group" aria-label="Тип остекления">
                 <span>Тип остекления</span>
-                <button type="button" className={glassType === "standard" ? "active" : ""} onClick={() => setGlassType("standard")}>Стандартные окна · {pricing.cleaning.allInclusive.standardRate} ₽/м²</button>
-                <button type="button" className={glassType === "panoramic" ? "active" : ""} onClick={() => setGlassType("panoramic")}>Панорамные окна · {pricing.cleaning.allInclusive.panoramicRate} ₽/м²</button>
+                <div>
+                  <button type="button" aria-pressed={glassType === "standard"} className={glassType === "standard" ? "active" : ""} onClick={() => setGlassType("standard")}>Стандартные окна · {pricing.cleaning.allInclusive.standardRate} ₽/м²</button>
+                  <button type="button" aria-pressed={glassType === "panoramic"} className={glassType === "panoramic" ? "active" : ""} onClick={() => setGlassType("panoramic")}>Панорамные окна · {pricing.cleaning.allInclusive.panoramicRate} ₽/м²</button>
+                </div>
               </div>
             )}
-            <div className="manager-field-row">
-              <label><span>Площадь, м²</span><input type="number" min={0} max={1000} value={area || ""} onChange={(event) => setArea(Math.max(0, Number(event.target.value) || 0))} /></label>
-              <div className="manager-rate"><span>Ставка</span><strong>{calculation.rate} ₽/м²</strong><small>минимум {fmt(calculation.minimum)}</small></div>
+            <div className="mc-area">
+              <label className="mc-area-input">
+                <span>Площадь, м²</span>
+                <span className="mc-area-field">
+                  <input type="number" inputMode="decimal" min={0} max={1000} placeholder="0" value={area || ""} onChange={(event) => setArea(Math.max(0, Number(event.target.value) || 0))} />
+                  <em>м²</em>
+                </span>
+              </label>
+              <div className="mc-rate">
+                <span>Ставка</span>
+                <strong>{calculation.rate} ₽/м²</strong>
+                <small>минимум {fmt(calculation.minimum)}</small>
+              </div>
             </div>
-            <div className="manager-range">
-              <div><span>Коэффициент загрязнённости</span><strong>×{dirt.toFixed(1)}</strong></div>
-              <input type="range" min={1} max={3} step={0.1} value={dirt} onChange={(event) => setDirt(Number(event.target.value))} />
+            <div className="mc-range">
+              <div className="mc-range-head"><span>Коэффициент загрязнённости</span><strong>×{dirt.toFixed(1)}</strong></div>
+              <input type="range" min={1} max={3} step={0.1} value={dirt} aria-label="Коэффициент загрязнённости" style={{ "--fill": `${((dirt - 1) / 2) * 100}%` } as React.CSSProperties} onChange={(event) => setDirt(Number(event.target.value))} />
+              <div className="mc-range-scale" aria-hidden="true"><span>×1.0</span><span>×2.0</span><span>×3.0</span></div>
               <small>Применяется только к стоимости уборки по площади</small>
             </div>
           </Section>
 
-          <Section title="Окна">
-            <div className="manager-price-list">
+          <Section id="windows" index="02" title="Окна" badge={sectionBadges.windows} open={openSections.windows} onToggle={() => toggleSection("windows")}>
+            <div className="mc-rows mc-rows-grid">
               {WINDOWS.map((item) => {
                 const price = item.id === "panoramic" ? panoramicPrice : pricing.windows[item.id][type === "repair" ? "repair" : "usual"];
-                return <div className="manager-price-row" key={item.id}><div><strong>{item.label}</strong>{item.id === "panoramic" ? <label className="manager-unit-price"><input aria-label="Цена панорамной створки" type="number" min={0} step={100} value={panoramicPrice || ""} onChange={(event) => setPanoramicPrice(Math.max(0, Number(event.target.value) || 0))} /><span>₽ / {item.unit}</span></label> : <small>{fmt(price)} / {item.unit}</small>}</div><Counter label={item.label} value={windows[item.id] || 0} onChange={(value) => updateCounter(setWindows, item.id, value)} /></div>;
+                return (
+                  <PriceRow key={item.id} label={item.label} value={windows[item.id] || 0} onChange={(value) => updateCounter(setWindows, item.id, value)}>
+                    {item.id === "panoramic"
+                      ? <label className="mc-unit-price"><input aria-label="Цена панорамной створки" type="number" inputMode="numeric" min={0} step={100} value={panoramicPrice || ""} onChange={(event) => setPanoramicPrice(Math.max(0, Number(event.target.value) || 0))} /><span>₽ / {item.unit}</span></label>
+                      : <small>{fmt(price)} / {item.unit}</small>}
+                  </PriceRow>
+                );
               })}
             </div>
-            {type === "repair" && <label className="manager-check"><input type="checkbox" checked={windowFilm} onChange={(event) => setWindowFilm(event.target.checked)} /><span><strong>Защитная плёнка на окнах</strong><small>Стоимость мойки окон ×2</small></span></label>}
+            {type === "repair" && <div className="mc-toggles single"><Toggle checked={windowFilm} onChange={setWindowFilm} title="Защитная плёнка на окнах" note="Стоимость мойки окон ×2" /></div>}
           </Section>
 
-          <Section title="Дополнительные услуги">
-            <div className="manager-price-list">
-              {EXTRAS.map((item) => <div className="manager-price-row" key={item.id}><div><strong>{item.label}</strong><small>{fmt(pricing.extras[item.id])} / {item.unit}</small></div><Counter label={item.label} value={extras[item.id] || 0} onChange={(value) => updateCounter(setExtras, item.id, value)} /></div>)}
+          <Section id="extras" index="03" title="Дополнительные услуги" badge={sectionBadges.extras} open={openSections.extras} onToggle={() => toggleSection("extras")}>
+            <div className="mc-rows mc-rows-grid">
+              {EXTRAS.map((item) => (
+                <PriceRow key={item.id} label={item.label} value={extras[item.id] || 0} onChange={(value) => updateCounter(setExtras, item.id, value)}>
+                  <small>{fmt(pricing.extras[item.id])} / {item.unit}</small>
+                </PriceRow>
+              ))}
             </div>
           </Section>
 
-          <Section title="Химчистка">
-            <p className="manager-section-note">Тарифы химчистки для выбранного города. Постоянные цены можно изменить в настройках.</p>
-            <div className="manager-price-list manager-price-grid">
-              {DRY_CLEANING.map((item) => <div className="manager-price-row" key={item.id}><div><strong>{item.label}</strong><small>{fmt(pricing.dry[item.id])} / {item.unit}</small></div><Counter label={item.label} value={dry[item.id] || 0} onChange={(value) => updateCounter(setDry, item.id, value)} /></div>)}
+          <Section id="dry" index="04" title="Химчистка" badge={sectionBadges.dry} open={openSections.dry} onToggle={() => toggleSection("dry")}>
+            <p className="mc-note">Тарифы химчистки для выбранного города. Постоянные цены можно изменить в настройках.</p>
+            <div className="mc-rows mc-rows-grid">
+              {DRY_CLEANING.map((item) => (
+                <PriceRow key={item.id} label={item.label} value={dry[item.id] || 0} onChange={(value) => updateCounter(setDry, item.id, value)}>
+                  <small>{fmt(pricing.dry[item.id])} / {item.unit}</small>
+                </PriceRow>
+              ))}
             </div>
           </Section>
 
-          <Section title="Особые условия">
-            <div className="manager-specials">
-              <label className="manager-check"><input type="checkbox" checked={bathroom} onChange={(event) => setBathroom(event.target.checked)} /><span><strong>Дополнительный санузел</strong><small>{fmt(pricing.special.bathroom)}</small></span></label>
-              <label className="manager-special-counter"><span><strong>Шкафы внутри</strong><small>{fmt(pricing.special.cabinet)} / шт.</small></span><Counter label="Шкафы внутри" value={innerCabinets} onChange={setInnerCabinets} /></label>
-              <label className="manager-check"><input type="checkbox" checked={mold} onChange={(event) => setMold(event.target.checked)} /><span><strong>Обработка плесени</strong><small>{fmt(pricing.special.mold)}</small></span></label>
-              <label className="manager-check"><input type="checkbox" checked={remoteTrip} onChange={(event) => setRemoteTrip(event.target.checked)} /><span><strong>Удалённый выезд</strong><small>{fmt(pricing.special.remoteTrip)}</small></span></label>
-              <label className="manager-check"><input type="checkbox" checked={kitchenOnly} onChange={(event) => setKitchenOnly(event.target.checked)} /><span><strong>Выезд только на кухню</strong><small>{fmt(pricing.special.kitchen)}</small></span></label>
+          <Section id="special" index="05" title="Особые условия" badge={sectionBadges.special} open={openSections.special} onToggle={() => toggleSection("special")}>
+            <div className="mc-toggles">
+              <Toggle checked={bathroom} onChange={setBathroom} title="Дополнительный санузел" note={fmt(pricing.special.bathroom)} />
+              <div className={`mc-toggle mc-toggle-counter${innerCabinets > 0 ? " on" : ""}`}>
+                <span className="mc-toggle-text"><strong>Шкафы внутри</strong><small>{fmt(pricing.special.cabinet)} / шт.</small></span>
+                <Counter label="Шкафы внутри" value={innerCabinets} onChange={setInnerCabinets} />
+              </div>
+              <Toggle checked={mold} onChange={setMold} title="Обработка плесени" note={fmt(pricing.special.mold)} />
+              <Toggle checked={remoteTrip} onChange={setRemoteTrip} title="Удалённый выезд" note={fmt(pricing.special.remoteTrip)} />
+              <Toggle checked={kitchenOnly} onChange={setKitchenOnly} title="Выезд только на кухню" note={fmt(pricing.special.kitchen)} />
             </div>
           </Section>
         </div>
 
-        <aside className="manager-sidebar">
-          <div className="manager-summary">
-            <div className="manager-summary-head"><span>Расчёт</span><small className={`source-${pricingSource}`}>{pricingSource === "supabase" ? "цены из Supabase" : pricingSource === "loading" ? "загрузка цен…" : "резервный прайс"}</small></div>
-            {calculation.lines.length ? <div className="manager-lines">{calculation.lines.map((line, index) => <div key={`${line.label}-${index}`}><span>{line.label}</span><strong>{fmt(line.sum)}</strong></div>)}</div> : <div className="manager-empty">Добавьте площадь, услугу или химчистку</div>}
-            <div className="manager-total"><span>Итого по прайсу</span><strong>{fmt(calculation.total)}</strong></div>
-            {calculation.minimumAdjustment > 0 && <p className="manager-hint">Сумма услуг: {fmt(calculation.subtotal)}. Доплата до минимального заказа {fmt(calculation.minimum)}: {fmt(calculation.minimumAdjustment)}.</p>}
-            <label className="manager-manual manager-manual-with-note"><span>Цена для клиента{discountPercent > 0 && <small>Скидка {discountPercent}% · −{fmt(calculation.total - finalTotal)}</small>}{markupPercent > 0 && <small className="markup">Наценка {markupPercent}% · +{fmt(finalTotal - calculation.total)}</small>}</span><input type="number" min={0} value={(manualPrice ?? calculation.total) || ""} onChange={(event) => { const value = Number(event.target.value); setManualPrice(value === calculation.total ? null : Math.max(0, value || 0)); }} /></label>
-            <label className="manager-manual manager-expenses"><span>Расходы<small>{expenses === null ? "65% от цены клиента · округлено до 100 ₽" : "Скорректировано вручную · очистите для автосуммы"}</small></span><input aria-label="Расходы" type="number" min={0} step={100} value={(expenses ?? automaticExpenses) || ""} onChange={(event) => setExpenses(event.target.value === "" ? null : Math.max(0, Number(event.target.value) || 0))} /></label>
-            {calculation.total > 0 && <>
-              <div className={`manager-margin ${marginPercent >= 30 ? "good" : marginPercent >= 20 ? "warn" : "bad"}`}><div><span>Маржа сделки</span><strong>{fmt(margin)}</strong></div><b>{marginPercent.toFixed(0)}%</b><small>Расходы: {fmt(dealCosts)} · чистая прибыль после указанных затрат</small></div>
-              <button type="button" className="manager-margin-toggle" onClick={() => setShowMarginSettings((value) => !value)}><Settings2 size={15} />{showMarginSettings ? "Скрыть параметры маржи" : "Параметры маржи"}</button>
-              {showMarginSettings && <div className="manager-margin-settings">
-                <label><span>Оплата клинеру</span><div><input aria-label="Оплата клинеру" type="number" min={0} step={100} value={cleanerPayment ?? ""} placeholder="0" onChange={(event) => setCleanerPayment(event.target.value === "" ? null : Math.max(0, Number(event.target.value) || 0))} /><small>₽</small></div></label>
-                <label><span>Оплата Бригадиру</span><div><input aria-label="Оплата Бригадиру" type="number" min={0} step={100} value={brigadierPayment || ""} placeholder="0" onChange={(event) => setBrigadierPayment(Math.max(0, Number(event.target.value) || 0))} /><small>₽</small></div></label>
-                <label><span>Стоимость рекламного лида</span><div><input aria-label="Стоимость рекламного лида" type="number" min={0} step={100} value={leadCost || ""} placeholder="0" onChange={(event) => setLeadCost(Math.max(0, Number(event.target.value) || 0))} /><small>₽</small></div></label>
-                <label><span>Налог от выручки</span><div><input aria-label="Налог от выручки" type="number" min={0} max={100} step={0.1} value={taxPercent || ""} placeholder="0" onChange={(event) => setTaxPercent(Math.min(100, Math.max(0, Number(event.target.value) || 0)))} /><small>%</small></div></label>
+        <aside ref={sidebarRef} className="mc-side">
+          <div id="mc-summary" className="mc-summary">
+            <div className="mc-summary-head">
+              <span>Расчёт</span>
+              <small className={`mc-source source-${pricingSource}`}>{pricingSource === "supabase" ? "цены из Supabase" : pricingSource === "loading" ? "загрузка цен…" : "резервный прайс"}</small>
+            </div>
+            {calculation.lines.length
+              ? <div className="mc-lines">{calculation.lines.map((line, index) => <div key={`${line.label}-${index}`}><span>{line.label}</span><strong>{fmt(line.sum)}</strong></div>)}</div>
+              : <div className="mc-empty">Добавьте площадь, услугу или химчистку</div>}
+            <div className="mc-total">
+              <span>Итого по прайсу</span>
+              <strong>{fmt(calculation.total)}</strong>
+            </div>
+            {calculation.minimumAdjustment > 0 && <p className="mc-summary-hint">Сумма услуг: {fmt(calculation.subtotal)}. Доплата до минимального заказа {fmt(calculation.minimum)}: {fmt(calculation.minimumAdjustment)}.</p>}
+            <div className="mc-money">
+              <label className="mc-money-row">
+                <span>Цена для клиента{discountPercent > 0 && <small>Скидка {discountPercent}% · −{fmt(calculation.total - finalTotal)}</small>}{markupPercent > 0 && <small className="markup">Наценка {markupPercent}% · +{fmt(finalTotal - calculation.total)}</small>}</span>
+                <input type="number" inputMode="numeric" min={0} value={(manualPrice ?? calculation.total) || ""} onChange={(event) => { const value = Number(event.target.value); setManualPrice(value === calculation.total ? null : Math.max(0, value || 0)); }} />
+              </label>
+              <label className="mc-money-row">
+                <span>Расходы<small className="muted">{expenses === null ? "65% от цены клиента · округлено до 100 ₽" : "Скорректировано вручную · очистите для автосуммы"}</small></span>
+                <input aria-label="Расходы" type="number" inputMode="numeric" min={0} step={100} value={(expenses ?? automaticExpenses) || ""} onChange={(event) => setExpenses(event.target.value === "" ? null : Math.max(0, Number(event.target.value) || 0))} />
+              </label>
+            </div>
+            {calculation.total > 0 && <div className="mc-margin-block">
+              <div className={`mc-margin ${marginTone}`}>
+                <div><span>Маржа сделки</span><strong>{fmt(margin)}</strong></div>
+                <b>{marginPercent.toFixed(0)}%</b>
+                <small>Расходы: {fmt(dealCosts)} · чистая прибыль после указанных затрат</small>
+              </div>
+              <button type="button" className="mc-link-button" aria-expanded={showMarginSettings} onClick={() => setShowMarginSettings((value) => !value)}><Settings2 size={15} />{showMarginSettings ? "Скрыть параметры маржи" : "Параметры маржи"}</button>
+              {showMarginSettings && <div className="mc-margin-settings">
+                <label><span>Оплата клинеру</span><div><input aria-label="Оплата клинеру" type="number" inputMode="numeric" min={0} step={100} value={cleanerPayment ?? ""} placeholder="0" onChange={(event) => setCleanerPayment(event.target.value === "" ? null : Math.max(0, Number(event.target.value) || 0))} /><small>₽</small></div></label>
+                <label><span>Оплата Бригадиру</span><div><input aria-label="Оплата Бригадиру" type="number" inputMode="numeric" min={0} step={100} value={brigadierPayment || ""} placeholder="0" onChange={(event) => setBrigadierPayment(Math.max(0, Number(event.target.value) || 0))} /><small>₽</small></div></label>
+                <label><span>Стоимость рекламного лида</span><div><input aria-label="Стоимость рекламного лида" type="number" inputMode="numeric" min={0} step={100} value={leadCost || ""} placeholder="0" onChange={(event) => setLeadCost(Math.max(0, Number(event.target.value) || 0))} /><small>₽</small></div></label>
+                <label><span>Налог от выручки</span><div><input aria-label="Налог от выручки" type="number" inputMode="decimal" min={0} max={100} step={0.1} value={taxPercent || ""} placeholder="0" onChange={(event) => setTaxPercent(Math.min(100, Math.max(0, Number(event.target.value) || 0)))} /><small>%</small></div></label>
                 <div><span>Налог в рублях</span><strong>{fmt(taxCost)}</strong></div>
               </div>}
-            </>}
+            </div>}
           </div>
 
-          <div className="manager-client">
-            <h2>Данные клиента</h2>
-            <div className="manager-form-grid">
-              <label className="wide"><span>Город</span><select value={cityId} onChange={(event) => setCityId(event.target.value as typeof cityId)}>{CITIES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
-              <label><span>День уборки *</span><input type="date" value={client.date} onChange={(event) => setClientValue("date", event.target.value)} /></label>
-              <label><span>Время *</span><span className="manager-time-selects"><select aria-label="Часы" value={client.time.split(":")[0] || ""} onChange={(event) => setClientValue("time", event.target.value ? `${event.target.value}:${client.time.split(":")[1] || "00"}` : "")}><option value="">Часы</option>{HOURS.map((hour) => <option key={hour} value={hour}>{hour}</option>)}</select><select aria-label="Минуты" disabled={!client.time} value={client.time.split(":")[1] || "00"} onChange={(event) => setClientValue("time", `${client.time.split(":")[0]}:${event.target.value}`)}>{MINUTES.map((minute) => <option key={minute} value={minute}>{minute}</option>)}</select></span></label>
-              <label><span>Длительность</span><input className="manager-readonly" readOnly value={duration.label} /></label>
-              <label><span>Имя *</span><input value={client.name} onChange={(event) => setClientValue("name", event.target.value)} /></label>
+          <div id="mc-client" className="mc-card mc-client">
+            <div className="mc-client-head"><h2>Данные клиента</h2><span><MapPin size={14} aria-hidden="true" />{city.label}</span></div>
+            <div className="mc-form">
+              <label className="wide-sm"><span>День уборки *</span><input type="date" value={client.date} onChange={(event) => setClientValue("date", event.target.value)} /></label>
+              <label className="wide-sm"><span>Время *</span><span className="mc-time"><select aria-label="Часы" value={client.time.split(":")[0] || ""} onChange={(event) => setClientValue("time", event.target.value ? `${event.target.value}:${client.time.split(":")[1] || "00"}` : "")}><option value="">Часы</option>{HOURS.map((hour) => <option key={hour} value={hour}>{hour}</option>)}</select><select aria-label="Минуты" disabled={!client.time} value={client.time.split(":")[1] || "00"} onChange={(event) => setClientValue("time", `${client.time.split(":")[0]}:${event.target.value}`)}>{MINUTES.map((minute) => <option key={minute} value={minute}>{minute}</option>)}</select></span></label>
+              <label><span>Длительность</span><input className="mc-readonly" readOnly value={duration.label} /></label>
+              <label><span>Имя *</span><input autoComplete="off" value={client.name} onChange={(event) => setClientValue("name", event.target.value)} /></label>
               <label className="wide"><span>Телефон *</span><input type="tel" inputMode="tel" autoComplete="tel" value={client.phone || "+7"} onChange={(event) => setClientValue("phone", normalizePhone(event.target.value))} /></label>
               <label className="wide"><span>Адрес *</span><input placeholder="Улица, дом" value={client.address} onChange={(event) => setClientValue("address", event.target.value)} /></label>
-              <label><span>Этаж</span><input value={client.floor} onChange={(event) => setClientValue("floor", event.target.value)} /></label>
+              <label><span>Этаж</span><input inputMode="numeric" value={client.floor} onChange={(event) => setClientValue("floor", event.target.value)} /></label>
               <label><span>Квартира</span><input value={client.apartment} onChange={(event) => setClientValue("apartment", event.target.value)} /></label>
               <label><span>Код домофона</span><input value={client.intercom} onChange={(event) => setClientValue("intercom", event.target.value)} /></label>
-              <label><span>Подъезд</span><input value={client.entrance} onChange={(event) => setClientValue("entrance", event.target.value)} /></label>
+              <label><span>Подъезд</span><input inputMode="numeric" value={client.entrance} onChange={(event) => setClientValue("entrance", event.target.value)} /></label>
               <label className="wide"><span>Дополнительно</span><textarea rows={3} placeholder="Парковка, питомцы, пожелания…" value={client.note} onChange={(event) => setClientValue("note", event.target.value)} /></label>
             </div>
-            <div className="manager-actions">
-              <button type="button" className="manager-calendar" disabled={isUnknownCity || pricesLoading || !calendarReady || calendarBusy} onClick={sendToCalendar}>
+            <div className="mc-actions">
+              <button type="button" className="mc-btn mc-btn-primary" disabled={isUnknownCity || pricesLoading || !calendarReady || calendarBusy} onClick={sendToCalendar}>
                 {calendarStatus === "sending" ? <LoaderCircle className="spin" size={18} /> : calendarStatus === "ok" ? <Check size={18} /> : <CalendarPlus size={18} />}
                 {calendarStatus === "sending" ? "Добавляем…" : calendarStatus === "ok" ? "Добавлено в календарь" : "Отправить в Google Calendar"}
               </button>
-              <button type="button" className="manager-follow-up" disabled={isUnknownCity || pricesLoading || calendarBusy} onClick={() => setShowFollowUp(true)}><PhoneCall size={18} />На подтверждение</button>
-              <button type="button" className="manager-price-inquiry" disabled={pricesLoading || calendarBusy} onClick={sendPriceInquiry}>
-                {priceInquiryStatus === "sending" ? <LoaderCircle className="spin" size={18} /> : priceInquiryStatus === "ok" ? <Check size={18} /> : <CircleDollarSign size={18} />}
-                {priceInquiryStatus === "sending" ? "Добавляем…" : priceInquiryStatus === "ok" ? "Добавлено: узнавали цену" : "Узнавали цену"}
-              </button>
+              <div className="mc-actions-pair">
+                <button type="button" className="mc-btn mc-btn-amber" disabled={isUnknownCity || pricesLoading || calendarBusy} onClick={() => setShowFollowUp(true)}><PhoneCall size={18} />На подтверждение</button>
+                <button type="button" className="mc-btn mc-btn-cream" disabled={pricesLoading || calendarBusy} onClick={sendPriceInquiry}>
+                  {priceInquiryStatus === "sending" ? <LoaderCircle className="spin" size={18} /> : priceInquiryStatus === "ok" ? <Check size={18} /> : <CircleDollarSign size={18} />}
+                  {priceInquiryStatus === "sending" ? "Добавляем…" : priceInquiryStatus === "ok" ? "Добавлено: узнавали цену" : "Узнавали цену"}
+                </button>
+              </div>
               {isUnknownCity
-                ? <p className="manager-hint">Для города «Не определен» доступно только действие «Узнавали цену».</p>
-                : !calendarReady && calculation.lines.length > 0 && <p className="manager-hint">Для обычного события заполните дату, время, имя, телефон и адрес. «Узнавали цену» работает без обязательных полей.</p>}
-              {calendarMessage && <p className={`manager-status ${calendarStatus}`}><AlertCircle size={14} />{calendarMessage}</p>}
-              {priceInquiryMessage && <p className={`manager-status ${priceInquiryStatus}`}><AlertCircle size={14} />{priceInquiryMessage}</p>}
-              {followUpMessage && <p role="status" className="manager-status ok"><Check size={14} />{followUpMessage}{followUpLink && <a href={followUpLink} target="_blank" rel="noreferrer">Открыть в календаре</a>}</p>}
-              <button type="button" className="manager-secondary" disabled={isUnknownCity || pricesLoading || !calculation.lines.length} onClick={copyEstimate}>{copied ? <Check size={17} /> : <Clipboard size={17} />}{copied ? "Скопировано" : "Скопировать смету + данные"}</button>
-              <button type="button" className="manager-secondary manager-brigadier" disabled={isUnknownCity || pricesLoading || !calculation.lines.length} onClick={copyForBrigadier}>{brigadierCopied ? <Check size={17} /> : <Clipboard size={17} />}{brigadierCopied ? "Скопировано для бригадира" : "Скопировать для бригадира"}</button>
-              <button type="button" className="manager-secondary" disabled={calendarBusy} onClick={reset}><Eraser size={17} />Сбросить всё</button>
+                ? <p className="mc-hint">Для города «Не определен» доступно только действие «Узнавали цену».</p>
+                : !calendarReady && calculation.lines.length > 0 && <p className="mc-hint">Для обычного события заполните дату, время, имя, телефон и адрес. «Узнавали цену» работает без обязательных полей.</p>}
+              {calendarMessage && <p className={`mc-status ${calendarStatus}`}><AlertCircle size={15} />{calendarMessage}</p>}
+              {priceInquiryMessage && <p className={`mc-status ${priceInquiryStatus}`}><AlertCircle size={15} />{priceInquiryMessage}</p>}
+              {followUpMessage && <p role="status" className="mc-status ok"><Check size={15} />{followUpMessage}{followUpLink && <a href={followUpLink} target="_blank" rel="noreferrer">Открыть в календаре</a>}</p>}
+              <div className="mc-actions-pair">
+                <button type="button" className="mc-btn mc-btn-ghost" disabled={isUnknownCity || pricesLoading || !calculation.lines.length} onClick={copyEstimate}>{copied ? <Check size={17} /> : <Clipboard size={17} />}{copied ? "Скопировано" : "Скопировать смету + данные"}</button>
+                <button type="button" className="mc-btn mc-btn-mint" disabled={isUnknownCity || pricesLoading || !calculation.lines.length} onClick={copyForBrigadier}>{brigadierCopied ? <Check size={17} /> : <Clipboard size={17} />}{brigadierCopied ? "Скопировано для бригадира" : "Скопировать для бригадира"}</button>
+              </div>
+              <button type="button" className="mc-btn mc-btn-text" disabled={calendarBusy} onClick={reset}><Eraser size={17} />Сбросить всё</button>
             </div>
           </div>
         </aside>
       </main>
+
+      <div className={`mc-dock${sidebarInView ? " hidden" : ""}`} aria-hidden={sidebarInView}>
+        <div className="mc-dock-total">
+          <span>{hasManualPrice ? "Цена для клиента" : "Итого"}</span>
+          <strong>{fmt(finalTotal)}</strong>
+        </div>
+        {calculation.total > 0 && <span className={`mc-dock-margin ${marginTone}`} title="Маржа сделки">{marginPercent.toFixed(0)}%</span>}
+        <button type="button" tabIndex={sidebarInView ? -1 : 0} onClick={() => jumpTo("summary")}><Receipt size={18} />Смета{calculation.lines.length > 0 && <b>{calculation.lines.length}</b>}</button>
+      </div>
+
       {showPricingSettings && <PricingSettings pin={pin} initialCityId={cityId} onClose={() => setShowPricingSettings(false)} onSaved={(savedCityId) => { if (savedCityId === cityId) setPricingReload((value) => value + 1); }} />}
       {showFollowUp && <FollowUpDialog cityLabel={city.label} timeZone={city.timeZone} onClose={() => setShowFollowUp(false)} onSend={sendFollowUp} />}
     </div>
