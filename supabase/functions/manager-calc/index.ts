@@ -259,8 +259,8 @@ async function fetchCalendarEvents(calendarId: string, accessToken: string) {
 }
 
 async function fetchSheetRows(accessToken: string) {
-  const sheetId = Deno.env.get("GOOGLE_SHEET_ID");
-  if (!sheetId) return null;
+  // ID таблицы «Вершина деятельность» не секрет: доступ к ней есть только у владельца и service account.
+  const sheetId = Deno.env.get("GOOGLE_SHEET_ID") || "1ey9GDuVRXo2tqu_UVbSdSUdUZN_-3rezQR2jHPNAMrM";
   const range = Deno.env.get("GOOGLE_SHEET_RANGE") || "A:H";
   const result = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(sheetId)}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`, {
     headers: { authorization: `Bearer ${accessToken}` },

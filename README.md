@@ -83,10 +83,9 @@ npm run build
 
 Заказы, «узнавали цену», створки и заметки читаются из календаря. Деньги, реклама
 и домены — из таблицы «Вершина деятельность», если она расшарена на service
-account и задан секрет; иначе деньги считаются по суммам в событиях календаря.
+account (ID зашит в функции, секрет `GOOGLE_SHEET_ID` может его переопределить); иначе деньги считаются по суммам в событиях календаря.
 
 ```bash
-npx supabase secrets set GOOGLE_SHEET_ID=ID_ТАБЛИЦЫ --project-ref apuajxotemukpjheppaz
 npx supabase functions deploy manager-calc --project-ref apuajxotemukpjheppaz --no-verify-jwt
 npm run test:achievements
 ```
