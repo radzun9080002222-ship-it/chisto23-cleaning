@@ -16,10 +16,12 @@ import {
   Settings2,
   Settings,
   Sparkles,
+  Trophy,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CITIES, type CityId } from "../../supabase/functions/_shared/pricing";
 import PricingSettings from "./PricingSettings";
+import Achievements, { unseenCount } from "./Achievements";
 import FollowUpDialog, { type FollowUpDetails } from "./FollowUpDialog";
 import { followUpSlot } from "../../supabase/functions/_shared/followUp";
 import { calculateDefaultExpenses } from "./expenses";
@@ -27,7 +29,9 @@ import { calculateOrderTotal } from "./orderTotal";
 import { buildBrigadierEstimate, buildOrderSummary } from "./estimateText";
 import {
   createCalendarEvent,
+  loadAchievements,
   loadPricing,
+  type AchievementsResult,
   type PricingConfig,
 } from "./managerApi";
 
@@ -332,6 +336,14 @@ function ManagerCalculator({ pin }: { pin: string }) {
   const [pricing, setPricing] = useState(DEFAULT_PRICING);
   const [pricingSource, setPricingSource] = useState<"loading" | "supabase" | "fallback">("loading");
   const [showPricingSettings, setShowPricingSettings] = useState(false);
+  const [showAchievements, setShowAchievements] = useState(false);
+  const [achievements, setAchievements] = useState<AchievementsResult | null>(null);
+  const [achievementsBadge, setAchievementsBadge] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    loadAchievements(pin).then((result) => { if (!cancelled) { setAchievements(result); setAchievementsBadge(unseenCount(result)); } }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [pin, showAchievements]);
   const [pricingReload, setPricingReload] = useState(0);
   const [loadedCityId, setLoadedCityId] = useState<CityId | null>(null);
   const [cityId, setCityId] = useState<(typeof CITIES)[number]["id"]>("unknown");
@@ -736,6 +748,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
             </select>
             <ChevronDown size={16} aria-hidden="true" />
           </label>
+          <button type="button" className="mc-icon-button mc-trophy" aria-label={achievementsBadge ? `Достижения: ${achievementsBadge} новых` : "Достижения"} title="Достижения" onClick={() => setShowAchievements(true)}><Trophy size={20} />{achievementsBadge > 0 && <b>{achievementsBadge > 99 ? "99+" : achievementsBadge}</b>}</button>
           <button type="button" className="mc-icon-button" aria-label="Настроить цены" title="Настроить цены" onClick={() => setShowPricingSettings(true)}><Settings size={20} /></button>
         </div>
         <nav className="mc-container mc-nav" aria-label="Разделы калькулятора">
@@ -933,6 +946,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
         <button type="button" tabIndex={sidebarInView ? -1 : 0} onClick={() => jumpTo("summary")}><Receipt size={18} />Смета{calculation.lines.length > 0 && <b>{calculation.lines.length}</b>}</button>
       </div>
 
+      {showAchievements && <Achievements pin={pin} initial={achievements} onClose={() => { setShowAchievements(false); setAchievementsBadge(0); }} />}
       {showPricingSettings && <PricingSettings pin={pin} initialCityId={cityId} onClose={() => setShowPricingSettings(false)} onSaved={(savedCityId) => { if (savedCityId === cityId) setPricingReload((value) => value + 1); }} />}
       {showFollowUp && <FollowUpDialog cityLabel={city.label} timeZone={city.timeZone} onClose={() => setShowFollowUp(false)} onSend={sendFollowUp} />}
     </div>

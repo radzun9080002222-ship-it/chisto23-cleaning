@@ -53,3 +53,8 @@ export const saveCityPricing = (pin: string, adminPin: string, cityId: CityId, p
 export async function createCalendarEvent(pin: string, payload: CalendarEventPayload) {
   return callManager<{ id: string; htmlLink?: string }>(pin, "calendar.create", payload);
 }
+
+export type { AchievementsResult, Achievement } from "../../supabase/functions/_shared/achievements";
+
+export const loadAchievements = (pin: string) =>
+  callManager<import("../../supabase/functions/_shared/achievements").AchievementsResult>(pin, "achievements.get");

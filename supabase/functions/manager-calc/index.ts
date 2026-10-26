@@ -2,6 +2,7 @@ import { CITIES, validateCityId, validatePricing, validatePricingCityId, type Ci
 import { appendCreationDate, assertCalendarActionAllowed, calendarEventOptions, type CalendarReminderPolicy } from "../_shared/calendar.ts";
 import { followUpSlot } from "../_shared/followUp.ts";
 import { disableCalculatorReminders } from "../_shared/calendarMaintenance.ts";
+import { computeAchievements, type AchievementsResult, type CalendarEventInput } from "../_shared/achievements.ts";
 
 type CalendarPayload = {
   summary: string;
@@ -55,7 +56,10 @@ function privateKeyBytes(pem: string) {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
-async function getGoogleAccessToken() {
+const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
+const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly";
+
+async function getGoogleAccessToken(scope = CALENDAR_SCOPE) {
   const serviceAccountEmail = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_EMAIL");
   const privateKey = Deno.env.get("GOOGLE_PRIVATE_KEY");
   if (!serviceAccountEmail || !privateKey) {
@@ -66,7 +70,7 @@ async function getGoogleAccessToken() {
   const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
   const claims = base64Url(JSON.stringify({
     iss: serviceAccountEmail,
-    scope: "https://www.googleapis.com/auth/calendar.events",
+    scope,
     aud: "https://oauth2.googleapis.com/token",
     iat: now,
     exp: now + 3600,
@@ -229,6 +233,60 @@ async function removeOldReminders(payload: Record<string, unknown>) {
   return disableCalculatorReminders(fetch, calendarId, await getGoogleAccessToken(), payload.apply === true);
 }
 
+async function fetchCalendarEvents(calendarId: string, accessToken: string) {
+  const events: CalendarEventInput[] = [];
+  const timeMax = new Date(Date.now() + 120 * 86400000).toISOString();
+  let pageToken = "";
+  for (let page = 0; page < 20; page++) {
+    const params = new URLSearchParams({
+      timeMin: "2026-07-01T00:00:00Z", timeMax, singleEvents: "true", orderBy: "startTime", maxResults: "2500",
+      fields: "items(id,status,eventType,summary,description,location,created,start),nextPageToken",
+    });
+    if (pageToken) params.set("pageToken", pageToken);
+    const result = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`, {
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    const data = await result.json();
+    if (!result.ok) {
+      console.error("Calendar list failed", result.status, data.error?.status);
+      throw new Error("Не удалось прочитать календарь");
+    }
+    events.push(...(data.items || []));
+    if (!data.nextPageToken) break;
+    pageToken = data.nextPageToken;
+  }
+  return events;
+}
+
+async function fetchSheetRows(accessToken: string) {
+  const sheetId = Deno.env.get("GOOGLE_SHEET_ID");
+  if (!sheetId) return null;
+  const range = Deno.env.get("GOOGLE_SHEET_RANGE") || "A:H";
+  const result = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(sheetId)}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`, {
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+  if (!result.ok) {
+    // Таблица не расшарена на service account — считаем деньги по календарю.
+    console.error("Sheet read failed", result.status);
+    return null;
+  }
+  const data = await result.json() as { values?: string[][] };
+  return data.values || null;
+}
+
+let achievementsCache: { at: number; data: AchievementsResult } | null = null;
+
+async function getAchievements() {
+  if (achievementsCache && Date.now() - achievementsCache.at < 60_000) return achievementsCache.data;
+  const calendarId = Deno.env.get("GOOGLE_CALENDAR_ID");
+  if (!calendarId) throw new Error("Календарь не настроен на сервере");
+  const accessToken = await getGoogleAccessToken(`${CALENDAR_SCOPE} ${SHEETS_SCOPE}`);
+  const [events, sheetRows] = await Promise.all([fetchCalendarEvents(calendarId, accessToken), fetchSheetRows(accessToken)]);
+  const data = computeAchievements({ events, sheetRows });
+  achievementsCache = { at: Date.now(), data };
+  return data;
+}
+
 Deno.serve(async (request) => {
   const origin = request.headers.get("origin");
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
@@ -245,7 +303,11 @@ Deno.serve(async (request) => {
     if (body.action === "pricing.get") return response(origin, 200, { ok: true, data: await getPricing(payload.cityId === undefined ? undefined : validateCityId(payload.cityId)) });
     if (body.action === "pricing.settings.get") return response(origin, 200, { ok: true, data: await getPricingSnapshot(validatePricingCityId(payload.cityId)) });
     if (body.action === "pricing.settings.save") return response(origin, 200, { ok: true, data: await savePricing(payload) });
-    if (body.action === "calendar.create") return response(origin, 200, { ok: true, data: await createGoogleCalendarEvent(body.payload) });
+    if (body.action === "calendar.create") {
+      achievementsCache = null;
+      return response(origin, 200, { ok: true, data: await createGoogleCalendarEvent(body.payload) });
+    }
+    if (body.action === "achievements.get") return response(origin, 200, { ok: true, data: await getAchievements() });
     if (body.action === "calendar.reminders.disable") return response(origin, 200, { ok: true, data: await removeOldReminders(payload) });
     return response(origin, 400, { ok: false, error: "Неизвестное действие" });
   } catch (error) {
