@@ -34,14 +34,14 @@ function db(table: string) {
 async function chats(): Promise<number[]> {
   const { url, headers } = db("team_bot_chats");
   const result = await fetch(`${url}?select=chat_id`, { headers });
-  if (!result.ok) throw new Error("Не удалось прочитать чаты бота");
+  if (!result.ok) throw new Error(`Не удалось прочитать чаты бота (${result.status}: ${(await result.text()).slice(0, 200)})`);
   return (await result.json() as { chat_id: number }[]).map((row) => Number(row.chat_id));
 }
 
 async function readState<T>(key: string, fallback: T): Promise<T> {
   const { url, headers } = db("team_bot_state");
   const result = await fetch(`${url}?key=eq.${encodeURIComponent(key)}&select=value`, { headers });
-  if (!result.ok) throw new Error("Не удалось прочитать состояние бота");
+  if (!result.ok) throw new Error(`Не удалось прочитать состояние бота (${result.status}: ${(await result.text()).slice(0, 200)})`);
   const rows = await result.json() as { value: T }[];
   return rows[0]?.value ?? fallback;
 }
