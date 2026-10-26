@@ -93,12 +93,12 @@ export const NETWORK_CITIES: string[] = CITIES
 /* ---------- разбор календаря ---------- */
 
 type OrderStatus = "done" | "cancelled" | "planned";
-type ParsedOrder = {
-  id: string; city: string; status: OrderStatus; date: string; startAt: string; localHour: number; created: string;
+export type ParsedOrder = {
+  id: string; title: string; time: string; city: string; status: OrderStatus; date: string; startAt: string; localHour: number; created: string;
   revenue: number; cost: number; area: number; windows: number; chem: boolean; b2b: boolean;
   abroad: boolean; twoTeams: boolean; sewer: boolean; phone: string; text: string;
 };
-type ParsedInquiry = { city: string | null; date: string; total: number; area: number };
+export type ParsedInquiry = { id: string; title: string; city: string | null; date: string; time: string; total: number; area: number };
 
 const toNumber = (value: string) => Number(value.replace(/[\s ]/g, "").replace(",", "."));
 const lastNumber = (text: string, pattern: RegExp) => {
@@ -122,9 +122,9 @@ function eventStart(event: CalendarEventInput) {
   if (!raw) return null;
   const at = new Date(raw);
   const zone = event.start?.timeZone || "Europe/Moscow";
-  const parts = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23", timeZone: zone }).formatToParts(at);
+  const parts = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: zone }).formatToParts(at);
   const part = (type: string) => parts.find((item) => item.type === type)?.value || "00";
-  return { at, date: `${part("year")}-${part("month")}-${part("day")}`, hour: Number(part("hour")) };
+  return { at, date: `${part("year")}-${part("month")}-${part("day")}`, hour: Number(part("hour")), time: `${part("hour")}:${part("minute")}` };
 }
 
 export function parseCalendar(events: CalendarEventInput[]) {
@@ -142,7 +142,7 @@ export function parseCalendar(events: CalendarEventInput[]) {
     if (/^\s*узнавали цену/i.test(summary) || description.trimStart().startsWith("Статистика конверсий")) {
       const total = lastNumber(description, /ИТОГО[^:\n]*:\s*\d[\d\s ]*/) || 0;
       const area = Number(description.match(/,\s*(\d+)\s*м²\s*×/)?.[1] || summary.match(/(\d+)\s*м²/)?.[1] || 0);
-      inquiries.push({ city, date: start.date, total, area });
+      inquiries.push({ id: event.id, title: summary.trim(), city, date: start.date, time: start.time, total, area });
       continue;
     }
     if (/^\s*на подтверждение/i.test(summary) || description.trimStart().startsWith("Следующий контакт")) continue;
@@ -160,7 +160,7 @@ export function parseCalendar(events: CalendarEventInput[]) {
     let windows = 0;
     for (const match of description.matchAll(/(Панорамная створка|Стандартная створка|Мини-окно)\s*×\s*(\d+)/g)) windows += Number(match[2]);
     orders.push({
-      id: event.id, city, status, date: start.date, startAt: start.at.toISOString(), localHour: start.hour,
+      id: event.id, title: summary.replace(/\s+-\s+.*$/, "").trim(), time: start.time, city, status, date: start.date, startAt: start.at.toISOString(), localHour: start.hour,
       created: (event.created || start.at.toISOString()).slice(0, 10),
       revenue: paid ?? priced ?? manual ?? 0, cost,
       area: Number(summary.match(/(\d+)\s*м²/)?.[1] || description.match(/,\s*(\d+)\s*м²/)?.[1] || 0),
