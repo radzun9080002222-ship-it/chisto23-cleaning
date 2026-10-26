@@ -13,6 +13,7 @@ create table if not exists public.team_bot_state (
 alter table public.team_bot_chats enable row level security;
 alter table public.team_bot_state enable row level security;
 revoke all on public.team_bot_chats, public.team_bot_state from anon, authenticated;
+grant select, insert, update, delete on public.team_bot_chats, public.team_bot_state to service_role;
 
 -- Проверка новых событий каждые 10 минут.
 create extension if not exists pg_cron;
