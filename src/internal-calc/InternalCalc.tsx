@@ -770,7 +770,6 @@ function ManagerCalculator({ pin }: { pin: string }) {
 
       <main className="mc-container mc-layout">
         <div className="mc-main">
-          <AchievementsBlock data={achievements} error={achievementsError} unseen={achievementsBadge} onOpen={() => setShowAchievements(true)} />
           <Section id="cleaning" index="01" title="Уборка" badge={sectionBadges.cleaning} open={openSections.cleaning} onToggle={() => toggleSection("cleaning")}>
             <div className="mc-types" role="group" aria-label="Вид уборки">
               {(Object.keys(CLEANING_LABELS) as CleaningType[]).map((item) => (
@@ -944,6 +943,10 @@ function ManagerCalculator({ pin }: { pin: string }) {
             </div>
           </div>
         </aside>
+
+        <div className="mc-achievements-row">
+          <AchievementsBlock data={achievements} error={achievementsError} unseen={achievementsBadge} onOpen={() => setShowAchievements(true)} />
+        </div>
       </main>
 
       <div className={`mc-dock${sidebarInView ? " hidden" : ""}`} aria-hidden={sidebarInView}>

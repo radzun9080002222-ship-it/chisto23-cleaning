@@ -836,7 +836,8 @@ body:has(.mc-app), body:has(.manager-lock) { padding-bottom: 0; background: #eef
   @keyframes ach-pulse { 50% { opacity: .45; } }
 }
 
-/* Постоянный блок достижений в калькуляторе, формат Steam */
+/* Постоянный блок достижений в калькуляторе, формат Steam: в самом низу, на всю ширину */
+.mc-achievements-row { grid-column: 1 / -1; min-width: 0; margin-top: 8px; }
 .achb { display: grid; gap: 8px; border-radius: var(--radius); background: linear-gradient(160deg, #1b2a38 0%, #121b24 70%); padding: 14px 16px 12px; color: var(--ach-fg); box-shadow: var(--shadow); }
 .achb .achb-label { margin: 0; color: var(--ach-muted); font-family: "Manrope", sans-serif; font-size: 13px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
 .achb-panel { display: grid; overflow: hidden; border: 1px solid var(--ach-line); border-radius: 6px; background: rgba(24,36,47,.85); }
