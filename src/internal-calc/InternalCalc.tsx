@@ -16,12 +16,11 @@ import {
   Settings2,
   Settings,
   Sparkles,
-  Trophy,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CITIES, type CityId } from "../../supabase/functions/_shared/pricing";
 import PricingSettings from "./PricingSettings";
-import Achievements, { unseenCount } from "./Achievements";
+import Achievements, { AchievementsBlock, BadgeDefs, needsCelebration, unseenCount } from "./Achievements";
 import FollowUpDialog, { type FollowUpDetails } from "./FollowUpDialog";
 import { followUpSlot } from "../../supabase/functions/_shared/followUp";
 import { calculateDefaultExpenses } from "./expenses";
@@ -339,10 +338,19 @@ function ManagerCalculator({ pin }: { pin: string }) {
   const [showAchievements, setShowAchievements] = useState(false);
   const [achievements, setAchievements] = useState<AchievementsResult | null>(null);
   const [achievementsBadge, setAchievementsBadge] = useState(0);
+  const [achievementsError, setAchievementsError] = useState("");
   useEffect(() => {
+    if (showAchievements) return;
     let cancelled = false;
-    loadAchievements(pin).then((result) => { if (!cancelled) { setAchievements(result); setAchievementsBadge(unseenCount(result)); } }).catch(() => {});
-    return () => { cancelled = true; };
+    const load = () => loadAchievements(pin).then((result) => {
+      if (cancelled) return;
+      setAchievements(result); setAchievementsBadge(unseenCount(result)); setAchievementsError("");
+      // День открытия: праздничный экран показываем сам, один раз на устройство.
+      if (needsCelebration(result)) setShowAchievements(true);
+    }).catch((failure) => { if (!cancelled) setAchievementsError(failure instanceof Error ? failure.message : "Не удалось загрузить достижения"); });
+    load();
+    const timer = window.setInterval(load, 5 * 60 * 1000);
+    return () => { cancelled = true; window.clearInterval(timer); };
   }, [pin, showAchievements]);
   const [pricingReload, setPricingReload] = useState(0);
   const [loadedCityId, setLoadedCityId] = useState<CityId | null>(null);
@@ -734,6 +742,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
 
   return (
     <div className="mc-app">
+      <BadgeDefs />
       <header className="mc-header">
         <div className="mc-container mc-header-bar">
           <div className="mc-brand">
@@ -748,7 +757,6 @@ function ManagerCalculator({ pin }: { pin: string }) {
             </select>
             <ChevronDown size={16} aria-hidden="true" />
           </label>
-          <button type="button" className="mc-icon-button mc-trophy" aria-label={achievementsBadge ? `Достижения: ${achievementsBadge} новых` : "Достижения"} title="Достижения" onClick={() => setShowAchievements(true)}><Trophy size={20} />{achievementsBadge > 0 && <b>{achievementsBadge > 99 ? "99+" : achievementsBadge}</b>}</button>
           <button type="button" className="mc-icon-button" aria-label="Настроить цены" title="Настроить цены" onClick={() => setShowPricingSettings(true)}><Settings size={20} /></button>
         </div>
         <nav className="mc-container mc-nav" aria-label="Разделы калькулятора">
@@ -762,6 +770,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
 
       <main className="mc-container mc-layout">
         <div className="mc-main">
+          <AchievementsBlock data={achievements} error={achievementsError} unseen={achievementsBadge} onOpen={() => setShowAchievements(true)} />
           <Section id="cleaning" index="01" title="Уборка" badge={sectionBadges.cleaning} open={openSections.cleaning} onToggle={() => toggleSection("cleaning")}>
             <div className="mc-types" role="group" aria-label="Вид уборки">
               {(Object.keys(CLEANING_LABELS) as CleaningType[]).map((item) => (
