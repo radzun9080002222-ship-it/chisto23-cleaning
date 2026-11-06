@@ -128,6 +128,9 @@ test("50 тарифов, города, округление и совмести�
   assert.equal(CITIES[0].id, "unknown");
   const labels = CITIES.slice(1).map((city) => city.label);
   assert.deepEqual(labels, [...labels].sort((a, b) => a.localeCompare(b, "ru")));
+  assert.deepEqual(CITIES.find((city) => city.id === "kursk"), { id: "kursk", label: "Курск", timeZone: "Europe/Moscow" });
+  assert.deepEqual(CITIES.find((city) => city.id === "stavropol"), { id: "stavropol", label: "Ставрополь", timeZone: "Europe/Moscow" });
+  assert.throws(() => validateCityId("moscow"));
   assert.deepEqual(CITIES.find((city) => city.id === "tula"), { id: "tula", label: "Тула", timeZone: "Europe/Moscow" });
   assert.deepEqual(CITIES.find((city) => city.id === "kazan"), { id: "kazan", label: "Казань", timeZone: "Europe/Moscow" });
   assert.deepEqual(CITIES.find((city) => city.id === "volgograd"), { id: "volgograd", label: "Волгоград", timeZone: "Europe/Moscow" });
@@ -205,11 +208,13 @@ test("API: PIN, изоляция городов, создание, обновл�
     const kazan = (await request("pricing.settings.get", { cityId: "kazan" })).data;
     assert.equal(kazan.inherited, true); assert.equal(kazan.updatedAt, null);
     assert.deepEqual(kazan.pricing, pricing);
-    for (const cityId of ["volgograd", "kaluga", "balashikha", "tver", "kirov", "cheboksary"]) {
+    for (const cityId of ["volgograd", "kaluga", "balashikha", "tver", "kirov", "cheboksary", "kursk", "stavropol"]) {
       const city = (await request("pricing.settings.get", { cityId })).data;
       assert.equal(city.inherited, true); assert.equal(city.updatedAt, null);
       assert.deepEqual(city.pricing, pricing);
     }
+    assert.equal((await request("pricing.get", { cityId: "moscow" })).status, 400);
+    assert.equal((await request("pricing.settings.get", { cityId: "moscow" })).status, 400);
     const payload = { cityId: "lipetsk", adminPin: "test-pin", pricing: structuredClone(pricing), expectedUpdatedAt: null };
     assert.equal((await request("pricing.settings.save", { ...payload, adminPin: "wrong" })).status, 400);
     assert.equal((await request("pricing.settings.save", { ...payload, cityId: "default" })).status, 400);
