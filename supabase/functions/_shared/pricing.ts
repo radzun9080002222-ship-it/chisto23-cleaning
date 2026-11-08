@@ -23,6 +23,7 @@ export const CITIES = [
   { id: "kursk", label: "Курск", timeZone: "Europe/Moscow" },
   { id: "lipetsk", label: "Липецк", timeZone: "Europe/Moscow" },
   { id: "novy-urengoy", label: "Новый Уренгой", timeZone: "Asia/Yekaterinburg" },
+  { id: "penza", label: "Пенза", timeZone: "Europe/Moscow" },
   { id: "ryazan", label: "Рязань", timeZone: "Europe/Moscow" },
   { id: "salekhard", label: "Салехард", timeZone: "Asia/Yekaterinburg" },
   { id: "sochi", label: "Сочи", timeZone: "Europe/Moscow" },
