@@ -1,7 +1,8 @@
 import type { CityId, PricingConfig, PricingSnapshot } from "../../supabase/functions/_shared/pricing";
+import type { AcquisitionChannels } from "../../supabase/functions/_shared/acquisition";
 export type { PricingConfig } from "../../supabase/functions/_shared/pricing";
 
-export type CalendarEventPayload = {
+export type CalendarEventPayload = AcquisitionChannels & {
   cityId: CityId;
   summary: string;
   description: string;

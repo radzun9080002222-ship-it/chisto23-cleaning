@@ -1,10 +1,11 @@
 import { CITIES, validateCityId, validatePricing, validatePricingCityId, type CityId, type PricingSnapshot } from "../_shared/pricing.ts";
+import { validateAcquisitionChannels, withAcquisitionChannels, type AcquisitionChannels } from "../_shared/acquisition.ts";
 import { appendCreationDate, assertCalendarActionAllowed, calendarEventOptions, type CalendarReminderPolicy } from "../_shared/calendar.ts";
 import { followUpSlot } from "../_shared/followUp.ts";
 import { disableCalculatorReminders } from "../_shared/calendarMaintenance.ts";
 import { computeAchievements, type AchievementsResult, type CalendarEventInput } from "../_shared/achievements.ts";
 
-type CalendarPayload = {
+type CalendarPayload = AcquisitionChannels & {
   summary: string;
   description: string;
   location: string;
@@ -118,6 +119,7 @@ function validateCalendarPayload(value: unknown): CalendarPayload {
     // Older deployed clients did not send a policy; keep ordinary orders working during rollout.
     reminderPolicy: payload.reminderPolicy === undefined ? "order" : payload.reminderPolicy,
     cityId: payload.cityId === undefined ? undefined : validateCityId(payload.cityId),
+    ...validateAcquisitionChannels(payload),
   };
   if (!result.summary || !result.description || !result.location || !result.startDateTime || !result.endDateTime || !result.timeZone) {
     throw new Error("Не заполнены обязательные данные события");
@@ -208,8 +210,8 @@ async function createGoogleCalendarEvent(payloadValue: unknown) {
       },
       body: JSON.stringify({
         summary: payload.summary,
-        description: appendCreationDate(payload.description, createdAt, payload.timeZone),
-        extendedProperties: { private: { source: "vershina-manager-calc", kind: payload.reminderPolicy, createdAt: createdAt.toISOString() } },
+        description: appendCreationDate(withAcquisitionChannels(payload.description, payload), createdAt, payload.timeZone),
+        extendedProperties: { private: { source: "vershina-manager-calc", kind: payload.reminderPolicy, createdAt: createdAt.toISOString(), advertisingChannel: payload.advertisingChannel, intakeChannel: payload.intakeChannel } },
         location: payload.location,
         ...calendarEventOptions(payload.reminderPolicy, Deno.env.get("GOOGLE_CALENDAR_COLOR_ID") || "7"),
         start: { dateTime: payload.startDateTime, timeZone: payload.timeZone },
