@@ -1,6 +1,6 @@
-// Командный Telegram-бот «Вершины»: заказы, расчёты, выполнения и достижения в чат команды.
+// Командный Telegram-бот «Вершины»: присылает в чат команды только достижения.
 // Токен бота — только в секрете TELEGRAM_BOT_TOKEN, в Git его нет.
-import { computeAchievements, parseCalendar } from "../_shared/achievements.ts";
+import { computeAchievements } from "../_shared/achievements.ts";
 import { CALENDAR_SCOPE, SHEETS_SCOPE, fetchCalendarEvents, fetchSheetRows, getGoogleAccessToken } from "../_shared/google.ts";
 import { achievementsSummary, buildNotifications, emptyState, parseCommand, webhookSecret, type BotState } from "../_shared/teamBot.ts";
 
@@ -54,8 +54,7 @@ async function writeState(key: string, value: unknown) {
 async function loadData() {
   const accessToken = await getGoogleAccessToken(`${CALENDAR_SCOPE} ${SHEETS_SCOPE}`);
   const [events, sheetRows] = await Promise.all([fetchCalendarEvents(accessToken), fetchSheetRows(accessToken)]);
-  const { orders, inquiries } = parseCalendar(events);
-  return { orders, inquiries, achievements: computeAchievements({ events, sheetRows }) };
+  return { achievements: computeAchievements({ events, sheetRows }) };
 }
 
 async function tick() {
@@ -70,7 +69,8 @@ async function tick() {
 
 const HELP = [
   "<b>Бот команды «Вершины»</b>",
-  "Присылает в этот чат новые заказы, расчёты «узнавали цену», выполнения, отмены и достижения.",
+  "Присылает в этот чат только достижения: открытие кубка и новые ачивки.",
+  "Заказы, «узнавали цену», выполнения и отмены бот не рассылает.",
   "",
   "/start PIN — подключить чат (PIN как в калькуляторе)",
   "/ach — сводка по достижениям",
