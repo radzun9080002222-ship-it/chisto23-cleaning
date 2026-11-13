@@ -1,49 +1,27 @@
 // Логика командного бота без сети: что изменилось с прошлой проверки и какие сообщения отправить.
-import type { AchievementsResult, ParsedInquiry, ParsedOrder } from "./achievements.ts";
+// В чат уходят только достижения: заказы, «узнавали цену», выполнения и отмены здесь не рассылаются.
+import type { AchievementsResult } from "./achievements.ts";
 
 export type BotState = {
   initialized: boolean;
-  orders: Record<string, string>;
-  inquiries: string[];
   achievements: string[];
   revealed: boolean;
 };
 
-export const emptyState = (): BotState => ({ initialized: false, orders: {}, inquiries: [], achievements: [], revealed: false });
+export const emptyState = (): BotState => ({ initialized: false, achievements: [], revealed: false });
 
 const escape = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const money = (value: number) => `${Math.round(value).toLocaleString("ru-RU").replace(/ /g, " ")} ₽`;
 const day = (date: string) => date.split("-").reverse().slice(0, 2).join(".");
 
-export function buildNotifications(state: BotState, data: { orders: ParsedOrder[]; inquiries: ParsedInquiry[]; achievements: AchievementsResult }) {
+export function buildNotifications(state: BotState, data: { achievements: AchievementsResult }) {
   const next: BotState = {
     initialized: true,
-    orders: Object.fromEntries(data.orders.map((order) => [order.id, order.status])),
-    inquiries: data.inquiries.map((item) => item.id),
     achievements: data.achievements.achievements.filter((item) => item.done).map((item) => item.id),
     revealed: data.achievements.revealed,
   };
   // Первая проверка только запоминает текущее состояние, чтобы не засыпать чат историей.
   if (!state.initialized) return { messages: [] as string[], next };
-
-  const lines: string[] = [];
-  const knownInquiries = new Set(state.inquiries);
-  for (const item of data.inquiries) {
-    if (knownInquiries.has(item.id)) continue;
-    lines.push(`💬 <b>Узнавали цену</b> · ${escape(item.city || "город не указан")}${item.total ? ` · ${money(item.total)}` : ""}`);
-  }
-  for (const order of data.orders) {
-    const before = state.orders[order.id];
-    const head = `${escape(order.city)} · ${escape(order.title)}`;
-    if (!before) {
-      if (order.status === "planned") lines.push(`🆕 <b>Новый заказ</b> · ${head}\n${day(order.date)} в ${order.time}${order.revenue ? ` · ${money(order.revenue)}` : ""}`);
-      else if (order.status === "done") lines.push(`✅ <b>Выполнен</b> · ${head}${order.revenue ? ` · ${money(order.revenue)}` : ""}`);
-      continue;
-    }
-    if (before === order.status) continue;
-    if (order.status === "done") lines.push(`✅ <b>Выполнен</b> · ${head}${order.revenue ? ` · ${money(order.revenue)}` : ""}`);
-    if (order.status === "cancelled") lines.push(`❌ <b>Отмена</b> · ${head}`);
-  }
 
   const messages: string[] = [];
   const achievements = data.achievements;
@@ -68,13 +46,6 @@ export function buildNotifications(state: BotState, data: { orders: ParsedOrder[
       : `🏆 <b>Новые достижения: ${fresh.length}</b>\n${fresh.slice(0, 12).map((item) => `• <b>${escape(item.name)}</b> — ${escape(item.desc)}`).join("\n")}`);
   }
 
-  // Telegram режет сообщения длиннее 4096 символов: собираем события пачками.
-  let chunk = "";
-  for (const line of lines) {
-    if (chunk && chunk.length + line.length > 3500) { messages.unshift(chunk); chunk = ""; }
-    chunk = chunk ? `${chunk}\n\n${line}` : line;
-  }
-  if (chunk) messages.unshift(chunk);
   return { messages, next };
 }
 
