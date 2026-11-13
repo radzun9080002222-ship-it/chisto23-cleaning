@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CITIES, type CityId } from "../../supabase/functions/_shared/pricing";
+import { ADVERTISING_CHANNELS, INTAKE_CHANNELS, hasAcquisitionChannels, validateAcquisitionChannels } from "../../supabase/functions/_shared/acquisition";
 import PricingSettings from "./PricingSettings";
 import Achievements, { AchievementsBlock, BadgeDefs, needsCelebration, unseenCount } from "./Achievements";
 import FollowUpDialog, { type FollowUpDetails } from "./FollowUpDialog";
@@ -387,6 +388,8 @@ function ManagerCalculator({ pin }: { pin: string }) {
     apartment: "",
     entrance: "",
     intercom: "",
+    advertisingChannel: "",
+    intakeChannel: "",
     note: "",
   });
   const [copied, setCopied] = useState(false);
@@ -575,6 +578,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
   const formattedDateTime = formatDateTime(client.date, client.time);
 
   const estimateRows = calculation.lines.map((line) => `• ${line.label} — ${fmt(line.sum)}`).join("\n");
+  const channelsReady = hasAcquisitionChannels(client);
   const clientRows = [
     `Город: ${city.label}`,
     client.name && `Имя: ${client.name}`,
@@ -584,6 +588,8 @@ function ManagerCalculator({ pin }: { pin: string }) {
     addressDetails && `Адрес: ${addressDetails}`,
     client.entrance && `Подъезд: ${client.entrance}`,
     client.intercom && `Код домофона: ${client.intercom}`,
+    client.advertisingChannel && `Рекламный канал: ${client.advertisingChannel}`,
+    client.intakeChannel && `Канал поступления: ${client.intakeChannel}`,
     client.note && `Дополнительно: ${client.note}`,
   ].filter(Boolean).join("\n");
   const minimumRows = calculation.minimumAdjustment > 0
@@ -608,7 +614,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
     window.setTimeout(() => setBrigadierCopied(false), 2200);
   };
 
-  const calendarReady = !isUnknownCity && calculation.lines.length > 0 && Boolean(client.date && client.time && client.name && client.phone && client.address);
+  const calendarReady = !isUnknownCity && channelsReady && calculation.lines.length > 0 && Boolean(client.date && client.time && client.name && client.phone && client.address);
   const sendToCalendar = async () => {
     if (isUnknownCity || !calendarReady || calendarBusy) return;
     setCalendarStatus("sending");
@@ -629,6 +635,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
         endDateTime: addHours(client.date, client.time, duration.calendarHours),
         timeZone: city.timeZone,
         reminderPolicy: "order",
+        ...validateAcquisitionChannels(client),
       });
       setCalendarStatus("ok");
       setCalendarMessage("Событие добавлено в Google Calendar");
@@ -639,7 +646,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
   };
 
   const sendPriceInquiry = async () => {
-    if (calendarBusy) return;
+    if (calendarBusy || !channelsReady) return;
     setPriceInquiryStatus("sending");
     setPriceInquiryMessage("");
     const slot = getCurrentCalendarSlot(city.timeZone);
@@ -653,6 +660,8 @@ function ManagerCalculator({ pin }: { pin: string }) {
       addressDetails && `Адрес: ${addressDetails}`,
       client.entrance && `Подъезд: ${client.entrance}`,
       client.intercom && `Код домофона: ${client.intercom}`,
+      client.advertisingChannel && `Рекламный канал: ${client.advertisingChannel}`,
+      client.intakeChannel && `Канал поступления: ${client.intakeChannel}`,
       client.note && `Дополнительно: ${client.note}`,
     ].filter(Boolean).join("\n");
     const inquiryCalculation = estimateRows
@@ -669,6 +678,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
         endDateTime: slot.endDateTime,
         timeZone: city.timeZone,
         reminderPolicy: "none",
+        ...validateAcquisitionChannels(client),
       });
       setPriceInquiryStatus("ok");
       setPriceInquiryMessage("Обращение «Узнавали цену» добавлено на сегодня");
@@ -679,6 +689,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
   };
 
   const sendFollowUp = async (details: FollowUpDetails) => {
+    const channels = validateAcquisitionChannels(client);
     if (isUnknownCity || pricesLoading || calendarBusy) throw new Error("Дождитесь завершения текущей операции и выберите город");
     const slot = followUpSlot(`${details.date}T${details.time}:00`, city.timeZone);
     setFollowUpStatus("sending");
@@ -693,6 +704,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
         ...slot,
         timeZone: city.timeZone,
         reminderPolicy: "followUp",
+        ...channels,
       });
       setFollowUpStatus("ok");
       setFollowUpMessage(`Следующий контакт: ${formatDateTime(details.date, details.time)}`);
@@ -727,7 +739,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
     setLeadCost(0);
     setTaxPercent(0);
     setShowMarginSettings(false);
-    setClient({ date: "", time: "", name: "", phone: "", address: "", floor: "", apartment: "", entrance: "", intercom: "", note: "" });
+    setClient({ date: "", time: "", name: "", phone: "", address: "", floor: "", apartment: "", entrance: "", intercom: "", advertisingChannel: "", intakeChannel: "", note: "" });
     setCopied(false);
     setBrigadierCopied(false);
     setCalendarStatus("idle");
@@ -915,6 +927,8 @@ function ManagerCalculator({ pin }: { pin: string }) {
               <label><span>Квартира</span><input value={client.apartment} onChange={(event) => setClientValue("apartment", event.target.value)} /></label>
               <label><span>Код домофона</span><input value={client.intercom} onChange={(event) => setClientValue("intercom", event.target.value)} /></label>
               <label><span>Подъезд</span><input inputMode="numeric" value={client.entrance} onChange={(event) => setClientValue("entrance", event.target.value)} /></label>
+              <label><span>Рекламный канал *</span><select required value={client.advertisingChannel} onChange={(event) => setClientValue("advertisingChannel", event.target.value)}><option value="">Выберите канал</option>{ADVERTISING_CHANNELS.map((channel) => <option key={channel} value={channel}>{channel}</option>)}</select></label>
+              <label><span>Канал поступления *</span><select required value={client.intakeChannel} onChange={(event) => setClientValue("intakeChannel", event.target.value)}><option value="">Выберите канал</option>{INTAKE_CHANNELS.map((channel) => <option key={channel} value={channel}>{channel}</option>)}</select></label>
               <label className="wide"><span>Дополнительно</span><textarea rows={3} placeholder="Парковка, питомцы, пожелания…" value={client.note} onChange={(event) => setClientValue("note", event.target.value)} /></label>
             </div>
             <div className="mc-actions">
@@ -923,15 +937,16 @@ function ManagerCalculator({ pin }: { pin: string }) {
                 {calendarStatus === "sending" ? "Добавляем…" : calendarStatus === "ok" ? "Добавлено в календарь" : "Отправить в Google Calendar"}
               </button>
               <div className="mc-actions-pair">
-                <button type="button" className="mc-btn mc-btn-amber" disabled={isUnknownCity || pricesLoading || calendarBusy} onClick={() => setShowFollowUp(true)}><PhoneCall size={18} />На подтверждение</button>
-                <button type="button" className="mc-btn mc-btn-cream" disabled={pricesLoading || calendarBusy} onClick={sendPriceInquiry}>
+                <button type="button" className="mc-btn mc-btn-amber" disabled={isUnknownCity || !channelsReady || pricesLoading || calendarBusy} onClick={() => setShowFollowUp(true)}><PhoneCall size={18} />На подтверждение</button>
+                <button type="button" className="mc-btn mc-btn-cream" disabled={!channelsReady || pricesLoading || calendarBusy} onClick={sendPriceInquiry}>
                   {priceInquiryStatus === "sending" ? <LoaderCircle className="spin" size={18} /> : priceInquiryStatus === "ok" ? <Check size={18} /> : <CircleDollarSign size={18} />}
                   {priceInquiryStatus === "sending" ? "Добавляем…" : priceInquiryStatus === "ok" ? "Добавлено: узнавали цену" : "Узнавали цену"}
                 </button>
               </div>
               {isUnknownCity
                 ? <p className="mc-hint">Для города «Не определен» доступно только действие «Узнавали цену».</p>
-                : !calendarReady && calculation.lines.length > 0 && <p className="mc-hint">Для обычного события заполните дату, время, имя, телефон и адрес. «Узнавали цену» работает без обязательных полей.</p>}
+                : !calendarReady && calculation.lines.length > 0 && <p className="mc-hint">Для обычного события заполните дату, время, имя, телефон, адрес и оба канала. Для «Узнавали цену» обязательны только два канала.</p>}
+              {!channelsReady && <p className="mc-hint">Выберите рекламный канал и канал поступления для отправки в календарь.</p>}
               {calendarMessage && <p className={`mc-status ${calendarStatus}`}><AlertCircle size={15} />{calendarMessage}</p>}
               {priceInquiryMessage && <p className={`mc-status ${priceInquiryStatus}`}><AlertCircle size={15} />{priceInquiryMessage}</p>}
               {followUpMessage && <p role="status" className="mc-status ok"><Check size={15} />{followUpMessage}{followUpLink && <a href={followUpLink} target="_blank" rel="noreferrer">Открыть в календаре</a>}</p>}

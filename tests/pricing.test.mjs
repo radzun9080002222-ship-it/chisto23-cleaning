@@ -7,6 +7,27 @@ import { followUpSlot, localCalendarTime } from "../supabase/functions/_shared/f
 import { calculateDefaultExpenses } from "../src/internal-calc/expenses.ts";
 import { calculateOrderTotal } from "../src/internal-calc/orderTotal.ts";
 import { buildBrigadierEstimate, buildOrderSummary } from "../src/internal-calc/estimateText.ts";
+import { ADVERTISING_CHANNELS, INTAKE_CHANNELS, hasAcquisitionChannels, validateAcquisitionChannels, withAcquisitionChannels } from "../supabase/functions/_shared/acquisition.ts";
+
+test("Оба канала обязательны, допустимы только варианты из списков", () => {
+  assert.deepEqual(ADVERTISING_CHANNELS, ["Яндекс Директ", "Авито", "Повторный клиент"]);
+  assert.deepEqual(INTAKE_CHANNELS, ["Телефон", "Max", "Telegram", "WhatsUp", "Авито"]);
+  for (const advertisingChannel of ADVERTISING_CHANNELS) for (const intakeChannel of INTAKE_CHANNELS) {
+    const channels = { advertisingChannel, intakeChannel };
+    assert.equal(hasAcquisitionChannels(channels), true);
+    assert.deepEqual(validateAcquisitionChannels(channels), channels);
+    const original = "Данные клиента:\nПодъезд: 2\nРекламный канал: устаревшее значение\nКанал поступления: устаревшее значение\nДополнительно: тест";
+    const description = withAcquisitionChannels(original, channels);
+    assert.ok(description.includes(`Рекламный канал: ${advertisingChannel}\nКанал поступления: ${intakeChannel}`));
+    assert.ok(description.endsWith("Дополнительно: тест"));
+    assert.equal(withAcquisitionChannels(description, channels), description);
+  }
+  for (const channels of [{}, { advertisingChannel: "Авито" }, { intakeChannel: "Телефон" }, { advertisingChannel: "", intakeChannel: "" }, { advertisingChannel: "Другое", intakeChannel: "Телефон" }, { advertisingChannel: "Авито", intakeChannel: "Другое" }]) {
+    assert.equal(hasAcquisitionChannels(channels), false);
+    assert.throws(() => validateAcquisitionChannels(channels), /рекламный канал и канал поступления/);
+  }
+  assert.equal(withAcquisitionChannels("Смета", { advertisingChannel: "Авито", intakeChannel: "Телефон" }), "Смета\nРекламный канал: Авито\nКанал поступления: Телефон");
+});
 
 test("Все типы событий создаются без напоминаний", () => {
   for (const policy of ["order", "none", "followUp"]) {
@@ -238,7 +259,13 @@ test("API: PIN, изоляция городов, создание, обновл�
     assert.equal(copied.status, 200);
     assert.deepEqual((await request("pricing.get", { cityId: "voronezh" })).data, updated.data.pricing);
     assert.deepEqual(rows.get("default").data, pricing);
-    const followUp = { cityId: "novy-urengoy", summary: "На подтверждение: Думает", description: "Синтетическое обращение", location: "Новый Уренгой", startDateTime: "2099-12-31T23:50:00", endDateTime: "2100-01-01T06:00:00", timeZone: "Europe/Moscow", reminderPolicy: "followUp" };
+    const followUp = { cityId: "novy-urengoy", summary: "На подтверждение: Думает", description: "Синтетическое обращение", location: "Новый Уренгой", startDateTime: "2099-12-31T23:50:00", endDateTime: "2100-01-01T06:00:00", timeZone: "Europe/Moscow", reminderPolicy: "followUp", advertisingChannel: "Яндекс Директ", intakeChannel: "Telegram" };
+    for (const reminderPolicy of ["order", "none", "followUp"]) {
+      for (const channels of [{ advertisingChannel: undefined }, { intakeChannel: undefined }, { advertisingChannel: "" }, { intakeChannel: "Другое" }]) {
+        assert.equal((await request("calendar.create", { ...followUp, reminderPolicy, ...channels })).status, 400);
+      }
+    }
+    assert.equal(calendarEvents.length, 0, "Без каналов ни один тип события не отправляется в Google");
     assert.equal((await request("calendar.create", followUp)).status, 200);
     assert.equal(calendarEvents.length, 1);
     assert.deepEqual(calendarEvents[0].start, { dateTime: "2099-12-31T23:50:00", timeZone: "Asia/Yekaterinburg" });
@@ -246,7 +273,9 @@ test("API: PIN, изоляция городов, создание, обновл�
     assert.equal(calendarEvents[0].colorId, "5");
     assert.equal(calendarEvents[0].transparency, "transparent");
     assert.deepEqual(calendarEvents[0].reminders, { useDefault: false, overrides: [] });
-    assert.match(calendarEvents[0].description, /^Синтетическое обращение\n\nДата создания: /);
+    assert.match(calendarEvents[0].description, /^Синтетическое обращение\nРекламный канал: Яндекс Директ\nКанал поступления: Telegram\n\nДата создания: /);
+    assert.equal(calendarEvents[0].extendedProperties.private.advertisingChannel, "Яндекс Директ");
+    assert.equal(calendarEvents[0].extendedProperties.private.intakeChannel, "Telegram");
     assert.equal(calendarEvents[0].extendedProperties.private.source, "vershina-manager-calc");
     assert.ok(Number.isFinite(Date.parse(calendarEvents[0].extendedProperties.private.createdAt)));
     for (const override of [{ cityId: "unknown" }, { cityId: undefined }, { startDateTime: "2099-02-30T10:00:00" }, { startDateTime: "2020-01-01T10:00:00" }]) {
@@ -255,5 +284,8 @@ test("API: PIN, изоляция городов, создание, обновл�
     assert.equal(calendarEvents.length, 1, "Невалидные контакты не отправляются в Google");
     assert.equal((await request("calendar.create", { ...followUp, reminderPolicy: "none", cityId: "unknown" })).status, 200);
     assert.deepEqual(calendarEvents[1].reminders, { useDefault: false, overrides: [] });
+    assert.equal((await request("calendar.create", { ...followUp, reminderPolicy: "order", advertisingChannel: "Повторный клиент", intakeChannel: "Телефон" })).status, 200);
+    assert.ok(calendarEvents[2].description.includes("Рекламный канал: Повторный клиент\nКанал поступления: Телефон"));
+    assert.deepEqual(calendarEvents[2].reminders, { useDefault: false, overrides: [] });
   } finally { globalThis.fetch = originalFetch; globalThis.Deno = originalDeno; }
 });
