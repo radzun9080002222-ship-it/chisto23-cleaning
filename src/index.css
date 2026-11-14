@@ -342,7 +342,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 }
 
 /* ───────────── Закрытый калькулятор менеджера ───────────── */
-body:has(.mc-app), body:has(.manager-lock) { padding-bottom: 0; background: #eef0ec; }
+body:has(.mc-app), body:has(.manager-lock), body:has(.vr-report) { padding-bottom: 0; background: #eef0ec; }
 .mc-app, .manager-lock, .manager-pricing-overlay, .manager-follow-up-dialog {
   --ink: #1c2124;
   --ink-2: #3c4447;

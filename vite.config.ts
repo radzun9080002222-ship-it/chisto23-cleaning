@@ -19,6 +19,7 @@ export default defineConfig({
       input: {
         main: resolve(projectRoot, "index.html"),
         calc: resolve(projectRoot, "calc/index.html"),
+        report: resolve(projectRoot, "report/index.html"),
       },
     },
   },
