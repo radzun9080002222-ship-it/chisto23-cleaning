@@ -421,7 +421,7 @@ body:has(.mc-app), body:has(.manager-lock), body:has(.vr-report) { padding-botto
 .mc-note { margin: 0 0 12px; color: var(--muted); font-size: 13px; line-height: 1.5; }
 
 /* Вид уборки */
-.mc-types { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.mc-types { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
 .mc-types button { min-height: 64px; display: grid; align-content: center; gap: 3px; border: 1.5px solid var(--line); border-radius: 14px; background: var(--paper); padding: 10px 12px; text-align: left; cursor: pointer; transition: border-color .18s, background .18s, box-shadow .18s; }
 .mc-types button strong { font-size: 14px; font-weight: 800; line-height: 1.2; }
 .mc-types button small { color: var(--muted); font-size: 12px; font-weight: 700; }

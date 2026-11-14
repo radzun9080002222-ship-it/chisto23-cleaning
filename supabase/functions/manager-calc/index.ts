@@ -1,4 +1,4 @@
-import { CITIES, validateCityId, validatePricing, validatePricingCityId, type CityId, type PricingSnapshot } from "../_shared/pricing.ts";
+import { CITIES, cityPriceCoefficients, normalizePricing, validateCityId, validatePricing, validatePricingCityId, type CityId, type PricingSnapshot } from "../_shared/pricing.ts";
 import { validateAcquisitionChannels, withAcquisitionChannels, type AcquisitionChannels } from "../_shared/acquisition.ts";
 import { appendCreationDate, assertCalendarActionAllowed, calendarEventOptions, type CalendarReminderPolicy } from "../_shared/calendar.ts";
 import { followUpSlot } from "../_shared/followUp.ts";
@@ -159,14 +159,21 @@ async function readPricingRow(id: CityId | "default") {
 async function getPricing(cityId?: CityId) {
   const row = cityId ? await readPricingRow(cityId) : null;
   const fallback = row || await readPricingRow("default");
-  return fallback?.data || null;
+  return fallback ? normalizePricing(fallback.data) : null;
+}
+
+async function getCityCoefficients() {
+  const connection = pricingConnection();
+  const result = await fetch(`${connection.url}?select=id,data&limit=1000`, { headers: connection.headers });
+  if (!result.ok) throw new Error("Не удалось загрузить коэффициенты городов");
+  return cityPriceCoefficients(await result.json());
 }
 
 async function getPricingSnapshot(cityId: CityId): Promise<PricingSnapshot> {
   const row = await readPricingRow(cityId);
   const fallback = row || await readPricingRow("default");
   if (!fallback) throw new Error("Общий прайс не настроен");
-  return { pricing: validatePricing(fallback.data), updatedAt: row?.updated_at || null, inherited: !row };
+  return { pricing: normalizePricing(fallback.data), updatedAt: row?.updated_at || null, inherited: !row };
 }
 
 async function savePricing(payload: Record<string, unknown>): Promise<PricingSnapshot> {
@@ -303,6 +310,7 @@ Deno.serve(async (request) => {
     const body = await request.json() as { action?: string; payload?: unknown };
     const payload = (body.payload && typeof body.payload === "object" ? body.payload : {}) as Record<string, unknown>;
     if (body.action === "pricing.get") return response(origin, 200, { ok: true, data: await getPricing(payload.cityId === undefined ? undefined : validateCityId(payload.cityId)) });
+    if (body.action === "pricing.coefficients") return response(origin, 200, { ok: true, data: await getCityCoefficients() });
     if (body.action === "pricing.settings.get") return response(origin, 200, { ok: true, data: await getPricingSnapshot(validatePricingCityId(payload.cityId)) });
     if (body.action === "pricing.settings.save") return response(origin, 200, { ok: true, data: await savePricing(payload) });
     if (body.action === "calendar.create") {

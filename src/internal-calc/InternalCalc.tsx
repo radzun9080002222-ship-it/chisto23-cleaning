@@ -18,41 +18,36 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CITIES, type CityId } from "../../supabase/functions/_shared/pricing";
+import { CITIES, MINIMUM_VISIT_PRICE, cityPriceLabel, type CityCoefficients, type CityId } from "../../supabase/functions/_shared/pricing";
 import { ADVERTISING_CHANNELS, INTAKE_CHANNELS, hasAcquisitionChannels, validateAcquisitionChannels } from "../../supabase/functions/_shared/acquisition";
 import PricingSettings from "./PricingSettings";
 import Achievements, { AchievementsBlock, BadgeDefs, needsCelebration, unseenCount } from "./Achievements";
 import FollowUpDialog, { type FollowUpDetails } from "./FollowUpDialog";
 import { followUpSlot } from "../../supabase/functions/_shared/followUp";
 import { calculateDefaultExpenses } from "./expenses";
-import { calculateOrderTotal } from "./orderTotal";
+import { calculateOrderTotal, calculateClientPrice } from "./orderTotal";
 import { buildBrigadierEstimate, buildOrderSummary } from "./estimateText";
+import { CLEANING_LABELS, cleaningTariff, cleaningLabel, includesWindows, type CleaningType } from "./cleaning";
 import {
   createCalendarEvent,
   loadAchievements,
   loadPricing,
+  loadCityCoefficients,
   type AchievementsResult,
   type PricingConfig,
 } from "./managerApi";
 
-type CleaningType = "wet" | "general" | "repair" | "allInclusive";
 type CounterState = Record<string, number>;
 type SendStatus = "idle" | "sending" | "ok" | "error";
 
 const ACCESS_KEY = "chisto23_calc_pin";
 const CALC_PIN = import.meta.env.VITE_CALC_PIN || "3715";
 
-const CLEANING_LABELS: Record<CleaningType, string> = {
-  wet: "Влажная уборка",
-  general: "Генеральная уборка",
-  repair: "После ремонта",
-  allInclusive: "Всё включено",
-};
-
 const CLEANING_DURATION: Record<CleaningType, { label: string; calendarHours: number }> = {
   wet: { label: "2–4 часа", calendarHours: 4 },
   general: { label: "4–6 часов", calendarHours: 6 },
   repair: { label: "6–8 часов", calendarHours: 8 },
+  facadeGeneral: { label: "6–8 часов", calendarHours: 8 },
   allInclusive: { label: "6–8 часов", calendarHours: 8 },
 };
 
@@ -61,10 +56,11 @@ const MINUTES = ["00", "10", "20", "30", "40", "50"];
 
 const DEFAULT_PRICING: PricingConfig = {
   cleaning: {
-    wet: { rate: 160, minimum: 6000 },
-    general: { rate: 250, minimum: 9000 },
-    repair: { rate: 300, minimum: 12000 },
-    allInclusive: { standardRate: 450, panoramicRate: 550, minimum: 12000 },
+    wet: { rate: 150, minimum: 6000 },
+    general: { rate: 230, minimum: 6000 },
+    repair: { rate: 280, minimum: 6000 },
+    facadeGeneral: { standardRate: 370, panoramicRate: 450, minimum: 6000 },
+    allInclusive: { standardRate: 410, panoramicRate: 500, minimum: 6000 },
   },
   windows: {
     panoramic: { usual: 1000, repair: 1000 },
@@ -354,6 +350,12 @@ function ManagerCalculator({ pin }: { pin: string }) {
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [pin, showAchievements]);
   const [pricingReload, setPricingReload] = useState(0);
+  const [cityCoefficients, setCityCoefficients] = useState<CityCoefficients>({});
+  useEffect(() => {
+    let cancelled = false;
+    loadCityCoefficients(pin).then((result) => { if (!cancelled) setCityCoefficients(result); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [pin, pricingReload]);
   const [loadedCityId, setLoadedCityId] = useState<CityId | null>(null);
   const [cityId, setCityId] = useState<(typeof CITIES)[number]["id"]>("unknown");
   const [type, setType] = useState<CleaningType>("general");
@@ -467,22 +469,14 @@ function ManagerCalculator({ pin }: { pin: string }) {
 
   const calculation = useMemo(() => {
     const lines: { label: string; brigadierLabel: string; sum: number; group: "cleaning" | "windows" | "dry" | "other" }[] = [];
-    let rate = 0;
-    let minimum = 0;
-    if (type === "allInclusive") {
-      rate = glassType === "panoramic"
-        ? pricing.cleaning.allInclusive.panoramicRate
-        : pricing.cleaning.allInclusive.standardRate;
-      minimum = pricing.cleaning.allInclusive.minimum;
-    } else {
-      rate = pricing.cleaning[type].rate;
-      minimum = pricing.cleaning[type].minimum;
-    }
+    const tariff = cleaningTariff(pricing, type, glassType);
+    const rate = tariff.rate;
+    const minimum = area > 0 ? Math.max(MINIMUM_VISIT_PRICE, tariff.minimum) : MINIMUM_VISIT_PRICE;
     if (area > 0) {
       const sum = Math.round(area * rate * dirt);
       lines.push({
-        label: `${CLEANING_LABELS[type]}, ${area} м² × ${rate} ₽${dirt > 1 ? ` × ${dirt.toFixed(1)}` : ""}`,
-        brigadierLabel: `${CLEANING_LABELS[type]}, ${area} м²${dirt > 1 ? `, загрязнённость ×${dirt.toFixed(1)}` : ""}`,
+        label: `${cleaningLabel(type, glassType)}, ${area} м² × ${rate} ₽${dirt > 1 ? ` × ${dirt.toFixed(1)}` : ""}`,
+        brigadierLabel: `${cleaningLabel(type, glassType)}, ${area} м²${dirt > 1 ? `, загрязнённость ×${dirt.toFixed(1)}` : ""}`,
         sum,
         group: "cleaning",
       });
@@ -527,7 +521,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
     return { lines, ...orderTotal, dryTotal, rate, minimum };
   }, [area, bathroom, dirt, dry, extras, glassType, innerCabinets, kitchenOnly, mold, panoramicPrice, pricing, remoteTrip, type, windowFilm, windows]);
 
-  const finalTotal = manualPrice ?? calculation.total;
+  const finalTotal = calculateClientPrice(manualPrice, calculation.total, calculation.lines.length > 0);
   const hasManualPrice = manualPrice !== null && manualPrice !== calculation.total;
   const discountPercent = hasManualPrice && finalTotal < calculation.total && calculation.total > 0
     ? Math.round((1 - finalTotal / calculation.total) * 100)
@@ -566,8 +560,8 @@ function ManagerCalculator({ pin }: { pin: string }) {
     special: specialCount,
     summary: calculation.lines.length,
   };
-  const cleaningRateLabel = (item: CleaningType) => item === "allInclusive"
-    ? `${pricing.cleaning.allInclusive.standardRate}–${pricing.cleaning.allInclusive.panoramicRate} ₽/м²`
+  const cleaningRateLabel = (item: CleaningType) => includesWindows(item)
+    ? `${pricing.cleaning[item].standardRate}–${pricing.cleaning[item].panoramicRate} ₽/м²`
     : `${pricing.cleaning[item].rate} ₽/м²`;
 
   const addressDetails = [
@@ -620,7 +614,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
     setCalendarStatus("sending");
     setCalendarMessage("");
     const summary = buildOrderSummary({
-      area, cleaningLabel: CLEANING_LABELS[type],
+      area, cleaningLabel: cleaningLabel(type, glassType),
       hasWindows: calculation.lines.some((line) => line.group === "windows"),
       hasDry: calculation.lines.some((line) => line.group === "dry"),
       hasOther: calculation.lines.some((line) => line.group === "other"),
@@ -765,7 +759,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
             <MapPin size={16} aria-hidden="true" />
             <span className="mc-visually-hidden">Город</span>
             <select value={cityId} onChange={(event) => setCityId(event.target.value as typeof cityId)}>
-              {CITIES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+              {CITIES.map((item) => <option key={item.id} value={item.id}>{cityPriceLabel(item, cityCoefficients)}</option>)}
             </select>
             <ChevronDown size={16} aria-hidden="true" />
           </label>
@@ -791,12 +785,12 @@ function ManagerCalculator({ pin }: { pin: string }) {
                 </button>
               ))}
             </div>
-            {type === "allInclusive" && (
+            {includesWindows(type) && (
               <div className="mc-segment" role="group" aria-label="Тип остекления">
                 <span>Тип остекления</span>
                 <div>
-                  <button type="button" aria-pressed={glassType === "standard"} className={glassType === "standard" ? "active" : ""} onClick={() => setGlassType("standard")}>Стандартные окна · {pricing.cleaning.allInclusive.standardRate} ₽/м²</button>
-                  <button type="button" aria-pressed={glassType === "panoramic"} className={glassType === "panoramic" ? "active" : ""} onClick={() => setGlassType("panoramic")}>Панорамные окна · {pricing.cleaning.allInclusive.panoramicRate} ₽/м²</button>
+                  <button type="button" aria-pressed={glassType === "standard"} className={glassType === "standard" ? "active" : ""} onClick={() => setGlassType("standard")}>Стандартные окна · {pricing.cleaning[type].standardRate} ₽/м²</button>
+                  <button type="button" aria-pressed={glassType === "panoramic"} className={glassType === "panoramic" ? "active" : ""} onClick={() => setGlassType("panoramic")}>Панорамные окна · {pricing.cleaning[type].panoramicRate} ₽/м²</button>
                 </div>
               </div>
             )}
@@ -890,7 +884,8 @@ function ManagerCalculator({ pin }: { pin: string }) {
             <div className="mc-money">
               <label className="mc-money-row">
                 <span>Цена для клиента{discountPercent > 0 && <small>Скидка {discountPercent}% · −{fmt(calculation.total - finalTotal)}</small>}{markupPercent > 0 && <small className="markup">Наценка {markupPercent}% · +{fmt(finalTotal - calculation.total)}</small>}</span>
-                <input type="number" inputMode="numeric" min={0} value={(manualPrice ?? calculation.total) || ""} onChange={(event) => { const value = Number(event.target.value); setManualPrice(value === calculation.total ? null : Math.max(0, value || 0)); }} />
+                <input type="number" inputMode="numeric" min={calculation.lines.length ? MINIMUM_VISIT_PRICE : 0} value={(manualPrice ?? calculation.total) || ""} onBlur={() => { if (manualPrice !== null && manualPrice !== finalTotal) setManualPrice(finalTotal); }} onChange={(event) => { const value = Number(event.target.value); setManualPrice(value === calculation.total ? null : Math.max(0, value || 0)); }} />
+                {manualPrice !== null && manualPrice < finalTotal && <small>Минимальная цена выезда — {fmt(MINIMUM_VISIT_PRICE)}</small>}
               </label>
               <label className="mc-money-row">
                 <span>Расходы<small className="muted">{expenses === null ? "65% от цены клиента · округлено до 100 ₽" : "Скорректировано вручную · очистите для автосуммы"}</small></span>
@@ -915,7 +910,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
           </div>
 
           <div id="mc-client" className="mc-card mc-client">
-            <div className="mc-client-head"><h2>Данные клиента</h2><span><MapPin size={14} aria-hidden="true" />{city.label}</span></div>
+            <div className="mc-client-head"><h2>Данные клиента</h2><span title="Коэффициент по ставке генеральной уборки относительно общего прайса"><MapPin size={14} aria-hidden="true" />{cityPriceLabel(city, cityCoefficients)}</span></div>
             <div className="mc-form">
               <label className="wide-sm"><span>День уборки *</span><input type="date" value={client.date} onChange={(event) => setClientValue("date", event.target.value)} /></label>
               <label className="wide-sm"><span>Время *</span><span className="mc-time"><select aria-label="Часы" value={client.time.split(":")[0] || ""} onChange={(event) => setClientValue("time", event.target.value ? `${event.target.value}:${client.time.split(":")[1] || "00"}` : "")}><option value="">Часы</option>{HOURS.map((hour) => <option key={hour} value={hour}>{hour}</option>)}</select><select aria-label="Минуты" disabled={!client.time} value={client.time.split(":")[1] || "00"} onChange={(event) => setClientValue("time", `${client.time.split(":")[0]}:${event.target.value}`)}>{MINUTES.map((minute) => <option key={minute} value={minute}>{minute}</option>)}</select></span></label>
@@ -974,7 +969,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
       </div>
 
       {showAchievements && <Achievements pin={pin} initial={achievements} onClose={() => { setShowAchievements(false); setAchievementsBadge(0); }} />}
-      {showPricingSettings && <PricingSettings pin={pin} initialCityId={cityId} onClose={() => setShowPricingSettings(false)} onSaved={(savedCityId) => { if (savedCityId === cityId) setPricingReload((value) => value + 1); }} />}
+      {showPricingSettings && <PricingSettings pin={pin} initialCityId={cityId} onClose={() => setShowPricingSettings(false)} onSaved={() => setPricingReload((value) => value + 1)} coefficients={cityCoefficients} />}
       {showFollowUp && <FollowUpDialog cityLabel={city.label} timeZone={city.timeZone} onClose={() => setShowFollowUp(false)} onSend={sendFollowUp} />}
     </div>
   );

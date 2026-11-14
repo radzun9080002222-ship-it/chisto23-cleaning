@@ -1,4 +1,4 @@
-import type { CityId, PricingConfig, PricingSnapshot } from "../../supabase/functions/_shared/pricing";
+import { normalizePricing, type CityCoefficients, type CityId, type PricingConfig, type PricingSnapshot } from "../../supabase/functions/_shared/pricing";
 import type { AcquisitionChannels } from "../../supabase/functions/_shared/acquisition";
 export type { PricingConfig } from "../../supabase/functions/_shared/pricing";
 
@@ -42,8 +42,11 @@ async function callManager<T>(pin: string, action: string, payload?: unknown): P
 }
 
 export async function loadPricing(pin: string, cityId: CityId): Promise<PricingConfig | null> {
-  return callManager<PricingConfig | null>(pin, "pricing.get", { cityId });
+  const pricing = await callManager<PricingConfig | null>(pin, "pricing.get", { cityId });
+  return pricing ? normalizePricing(pricing) : null;
 }
+
+export const loadCityCoefficients = (pin: string) => callManager<CityCoefficients>(pin, "pricing.coefficients");
 
 export const loadPricingSettings = (pin: string, cityId: CityId) =>
   callManager<PricingSnapshot>(pin, "pricing.settings.get", { cityId });
