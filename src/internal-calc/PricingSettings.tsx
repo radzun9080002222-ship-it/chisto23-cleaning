@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { LoaderCircle, X } from "lucide-react";
-import { CITIES, PRICING_GROUPS, readPrice, setPrice, validatePricing, type CityId, type PricingConfig, type PricingSnapshot } from "../../supabase/functions/_shared/pricing";
+import { CITIES, MINIMUM_VISIT_PRICE, PRICING_GROUPS, cityPriceLabel, readPrice, setPrice, validatePricing, type CityCoefficients, type CityId, type PricingConfig, type PricingSnapshot } from "../../supabase/functions/_shared/pricing";
 import { loadPricingSettings, saveCityPricing } from "./managerApi";
 
 const inputsFor = (pricing: PricingConfig) => Object.fromEntries(PRICING_GROUPS.flatMap((group) => group.fields.map((field) => [field.path.join("."), String(readPrice(pricing, field.path))])));
 const errorText = (error: unknown) => error instanceof Error ? error.message : "Не удалось выполнить запрос";
 const PRICING_CITIES = CITIES.filter((city) => city.id !== "unknown");
 
-export default function PricingSettings({ pin, initialCityId, onClose, onSaved }: {
-  pin: string; initialCityId: CityId; onClose: () => void; onSaved: (cityId: CityId) => void;
+export default function PricingSettings({ pin, initialCityId, onClose, onSaved, coefficients }: {
+  pin: string; initialCityId: CityId; onClose: () => void; onSaved: (cityId: CityId) => void; coefficients: CityCoefficients;
 }) {
   const initialPricingCityId = initialCityId === "unknown" ? "sochi" : initialCityId;
   const [cityId, setCityId] = useState<CityId>(initialPricingCityId);
@@ -92,23 +92,24 @@ export default function PricingSettings({ pin, initialCityId, onClose, onSaved }
     <div ref={dialog} className="manager-pricing-dialog" role="dialog" aria-modal="true" aria-labelledby="pricing-title">
       <div className="manager-pricing-head"><h2 id="pricing-title">Настройка цен</h2><button type="button" disabled={busy} aria-label="Закрыть настройки цен" onClick={() => closeRef.current()}><X size={22} /></button></div>
       <p className="manager-section-note">Постоянный прайс калькулятора хранится в Supabase отдельно для каждого города. Цены публичных сайтов не меняются.</p>
+      <p className="manager-section-note">Коэффициент города — отношение ставки генеральной уборки к общему прайсу. Другие ставки могут отличаться. Минимальная цена любого выезда — 6 000 ₽.</p>
       <label className="manager-pricing-city"><span>Настраиваем цены города</span><select disabled={busy} value={cityId} onChange={(event) => {
         if (!dirty || window.confirm("Сменить город без сохранения изменений?")) setCityId(event.target.value as CityId);
-      }}>{PRICING_CITIES.map((city) => <option key={city.id} value={city.id}>{city.label}</option>)}</select></label>
+      }}>{PRICING_CITIES.map((city) => <option key={city.id} value={city.id}>{cityPriceLabel(city, coefficients)}</option>)}</select></label>
       {loading && <p role="status"><LoaderCircle className="spin" size={18} /> Загрузка цен…</p>}
       {snapshot && !loading && <form noValidate onSubmit={save}>
         <p className="manager-section-note">{snapshot.inherited ? "Пока используется общий прайс. Сохранение создаст отдельные цены этого города." : "Используется сохранённый прайс этого города."}</p>
         <fieldset disabled={busy} className="manager-pricing-fields">
           {PRICING_GROUPS.map((group, index) => <details key={group.title} open={index === 0}><summary>{group.title}</summary><div className="manager-pricing-grid">{group.fields.map((field) => {
             const key = field.path.join(".");
-            return <label key={key}><span>{field.label}</span><input aria-label={field.label} type="number" required min={0} max={10000000} step="0.01" value={values[key] ?? ""} onChange={(event) => setValues((current) => ({ ...current, [key]: event.target.value }))} /></label>;
+            return <label key={key}><span>{field.label}</span><input aria-label={field.label} type="number" required min={field.path[field.path.length - 1] === "minimum" ? MINIMUM_VISIT_PRICE : 0} max={10000000} step="0.01" value={values[key] ?? ""} onChange={(event) => setValues((current) => ({ ...current, [key]: event.target.value }))} /></label>;
           })}</div></details>)}
         </fieldset>
         <button type="submit" className="manager-primary" disabled={busy || !dirty && !snapshot.inherited}>{busy ? "Сохраняем…" : "Сохранить цены города"}</button>
       </form>}
       <div className="manager-pricing-copy"><h3>Скопировать цены между городами</h3><p className="manager-section-note">Копируется весь сохранённый прайс. Несохранённые правки не копируются.</p><div className="manager-pricing-grid">
-        <label><span>Из города</span><select disabled={busy} value={sourceCity} onChange={(event) => setSourceCity(event.target.value as CityId)}>{PRICING_CITIES.map((city) => <option key={city.id} value={city.id}>{city.label}</option>)}</select></label>
-        <label><span>В город</span><select disabled={busy} value={targetCity} onChange={(event) => setTargetCity(event.target.value as CityId)}>{PRICING_CITIES.map((city) => <option key={city.id} value={city.id}>{city.label}</option>)}</select></label>
+        <label><span>Из города</span><select disabled={busy} value={sourceCity} onChange={(event) => setSourceCity(event.target.value as CityId)}>{PRICING_CITIES.map((city) => <option key={city.id} value={city.id}>{cityPriceLabel(city, coefficients)}</option>)}</select></label>
+        <label><span>В город</span><select disabled={busy} value={targetCity} onChange={(event) => setTargetCity(event.target.value as CityId)}>{PRICING_CITIES.map((city) => <option key={city.id} value={city.id}>{cityPriceLabel(city, coefficients)}</option>)}</select></label>
       </div><button type="button" className="manager-secondary" disabled={busy || loading || sourceCity === targetCity} onClick={copy}>Скопировать</button></div>
       {error && <div role="alert" className="manager-form-error">{error}<button type="button" className="manager-secondary" disabled={busy} onClick={() => { if (!dirty || window.confirm("Загрузить свежие цены без сохранения изменений?")) setReload((value) => value + 1); }}>Загрузить свежие цены</button></div>}
       {message && <p role="status" className="manager-status ok">{message}</p>}

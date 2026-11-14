@@ -1,13 +1,68 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CITIES, PRICING_GROUPS, validateCityId, validatePricingCityId, validatePricing, setPrice } from "../supabase/functions/_shared/pricing.ts";
+import { CITIES, PRICING_GROUPS, cityPriceCoefficients, cityPriceLabel, normalizePricing, validateCityId, validatePricingCityId, validatePricing, setPrice } from "../supabase/functions/_shared/pricing.ts";
 import { appendCreationDate, assertCalendarActionAllowed, calendarReminderSettings, calendarEventOptions, isCalculatorEvent } from "../supabase/functions/_shared/calendar.ts";
 import { disableCalculatorReminders } from "../supabase/functions/_shared/calendarMaintenance.ts";
 import { followUpSlot, localCalendarTime } from "../supabase/functions/_shared/followUp.ts";
 import { calculateDefaultExpenses } from "../src/internal-calc/expenses.ts";
-import { calculateOrderTotal } from "../src/internal-calc/orderTotal.ts";
+import { calculateOrderTotal, calculateClientPrice } from "../src/internal-calc/orderTotal.ts";
 import { buildBrigadierEstimate, buildOrderSummary } from "../src/internal-calc/estimateText.ts";
 import { ADVERTISING_CHANNELS, INTAKE_CHANNELS, hasAcquisitionChannels, validateAcquisitionChannels, withAcquisitionChannels } from "../supabase/functions/_shared/acquisition.ts";
+import { CLEANING_LABELS, cleaningTariff, cleaningLabel, includesWindows } from "../src/internal-calc/cleaning.ts";
+
+test("Новая уборка с окнами: ставки, остекление, название и общий минимум", () => {
+  const tariffs = { cleaning: {
+    wet: { rate: 150, minimum: 6000 }, general: { rate: 230, minimum: 6000 },
+    repair: { rate: 280, minimum: 6000 },
+    facadeGeneral: { standardRate: 370, panoramicRate: 450, minimum: 6000 },
+    allInclusive: { standardRate: 410, panoramicRate: 500, minimum: 6000 },
+  } };
+  assert.deepEqual(Object.keys(CLEANING_LABELS), ["wet", "general", "repair", "facadeGeneral", "allInclusive"]);
+  for (const [type, glass, rate] of [["wet", "standard", 150], ["general", "standard", 230], ["repair", "standard", 280], ["facadeGeneral", "standard", 370], ["facadeGeneral", "panoramic", 450], ["allInclusive", "standard", 410], ["allInclusive", "panoramic", 500]]) {
+    const tariff = cleaningTariff(tariffs, type, glass);
+    assert.equal(tariff.rate, rate);
+    assert.equal(calculateOrderTotal([{ sum: 60 * tariff.rate }], tariff.minimum, true).total, 60 * rate);
+    assert.equal(calculateOrderTotal([{ sum: 10 * tariff.rate }], tariff.minimum, true).total, 6000);
+  }
+  assert.equal(includesWindows("general"), false);
+  assert.equal(includesWindows("facadeGeneral"), true);
+  assert.equal(includesWindows("allInclusive"), true);
+  assert.equal(cleaningLabel("facadeGeneral", "panoramic"), "Фасадная генеральная с окнами (панорамные окна)");
+  assert.equal(cleaningLabel("wet", "panoramic"), "Влажная уборка");
+});
+
+test("Коэффициенты городов считаются по сохранённой генеральной, подписи не меняют названия в данных", () => {
+  const rows = [
+    { id: "default", data: { cleaning: { general: { rate: 230 } } } },
+    { id: "balashikha", data: { cleaning: { general: { rate: 300 } } } },
+    { id: "novy-urengoy", data: { cleaning: { general: { rate: 280 } } } },
+    { id: "salekhard", data: { cleaning: { general: { rate: 280 } } } },
+  ];
+  const coefficients = cityPriceCoefficients(rows);
+  assert.equal(coefficients.tula, 1);
+  assert.equal(coefficients.balashikha, 300 / 230);
+  assert.equal(coefficients["novy-urengoy"], 280 / 230);
+  const label = (id) => cityPriceLabel(CITIES.find((city) => city.id === id), coefficients);
+  assert.equal(label("tula"), "Тула ×1");
+  assert.equal(label("balashikha"), "Балашиха ≈×1,3");
+  assert.equal(label("salekhard"), "Салехард ≈×1,22");
+  assert.equal(label("unknown"), "Не определен");
+  assert.equal(CITIES.find((city) => city.id === "tula").label, "Тула");
+  assert.throws(() => cityPriceCoefficients([]));
+  assert.throws(() => cityPriceCoefficients([{ id: "default", data: { cleaning: { general: { rate: 0 } } } }]));
+});
+
+test("Любой непустой выезд и ручная цена не опускаются ниже 6000 ₽", () => {
+  for (const hasCleaning of [true, false]) {
+    assert.deepEqual(calculateOrderTotal([{ sum: 1500 }], 6000, hasCleaning), { subtotal: 1500, total: 6000, minimumAdjustment: 4500 });
+    assert.equal(calculateOrderTotal([{ sum: 4500 }, { sum: 2000 }], 6000, hasCleaning).total, 6500);
+  }
+  assert.equal(calculateClientPrice(1000, 15000, true), 6000);
+  assert.equal(calculateClientPrice(9000, 15000, true), 9000);
+  assert.equal(calculateClientPrice(null, 15000, true), 15000);
+  assert.equal(calculateClientPrice(null, 0, false), 0);
+  assert.equal(calculateOrderTotal([], 6000, true).total, 0);
+});
 
 test("Оба канала обязательны, допустимы только варианты из списков", () => {
   assert.deepEqual(ADVERTISING_CHANNELS, ["Яндекс Директ", "Авито", "Повторный клиент"]);
@@ -133,18 +188,31 @@ test("Минимум применяется один раз к общей сум
     subtotal: 7000, total: 12000, minimumAdjustment: 5000,
   });
   assert.equal(calculateOrderTotal([{ sum: 10000 }, { sum: 2000 }], 12000, true).minimumAdjustment, 0);
-  assert.equal(calculateOrderTotal([{ sum: 2000 }], 12000, false).total, 2000);
+  assert.equal(calculateOrderTotal([{ sum: 2000 }], 12000, false).total, 6000);
   assert.equal(calculateOrderTotal([], 12000, false).total, 0);
   assert.equal(calculateOrderTotal([{ sum: 37 * 280 * 2 }, { sum: 1000 }], 12000, true).total, 21720);
   assert.equal(calculateOrderTotal([{ sum: 1000 }, { sum: 2500 }, { sum: 1500 }], 6000, true).total, 6000);
-  assert.equal(calculateOrderTotal([{ sum: 1000 }], 0, true).total, 1000);
+  assert.equal(calculateOrderTotal([{ sum: 1000 }], 0, true).total, 6000);
 });
 
 const pricing = {};
-for (const group of PRICING_GROUPS) for (const field of group.fields) setPrice(pricing, field.path, 100);
+for (const group of PRICING_GROUPS) for (const field of group.fields) setPrice(pricing, field.path, field.path.at(-1) === "minimum" ? 6000 : 100);
 
-test("50 тарифов, города, округление и совместимость старого прайса", () => {
-  assert.equal(PRICING_GROUPS.flatMap((group) => group.fields).length, 50);
+test("Чтение старого прайса добавляет фасадную уборку, сохранение неполного прайса запрещено", () => {
+  const legacy = structuredClone(pricing);
+  delete legacy.cleaning.facadeGeneral;
+  legacy.cleaning.general.rate = 280;
+  const normalized = normalizePricing(legacy);
+  assert.deepEqual(normalized.cleaning.facadeGeneral, { standardRate: 450, panoramicRate: 550, minimum: 6000 });
+  assert.equal(legacy.cleaning.facadeGeneral, undefined);
+  assert.throws(() => validatePricing(legacy));
+  const lowMinimum = structuredClone(pricing);
+  lowMinimum.cleaning.general.minimum = 5999;
+  assert.throws(() => validatePricing(lowMinimum), /6000/);
+});
+
+test("53 тарифа, города, округление и совместимость старого прайса", () => {
+  assert.equal(PRICING_GROUPS.flatMap((group) => group.fields).length, 53);
   for (const city of CITIES) assert.equal(validateCityId(city.id), city.id);
   assert.equal(CITIES[0].id, "unknown");
   const labels = CITIES.slice(1).map((city) => city.label);
@@ -203,7 +271,7 @@ test("API: PIN, изоляция городов, создание, обновл�
     assert.equal(url.origin, "https://test.invalid");
     assert.equal(options.headers.apikey, "test-key");
     const id = url.searchParams.get("id")?.slice(3);
-    if (method === "GET") return Response.json(rows.has(id) ? [rows.get(id)] : []);
+    if (method === "GET") return Response.json(id === undefined ? [...rows].map(([id, row]) => ({ id, ...row })) : rows.has(id) ? [rows.get(id)] : []);
     const body = JSON.parse(options.body);
     if (method === "POST") {
       if (rows.has(body.id)) return Response.json({}, { status: 409 });
@@ -223,6 +291,10 @@ test("API: PIN, изоляция городов, создание, обновл�
     assert.equal((await request("pricing.get", undefined, { pin: "wrong" })).status, 401);
     assert.equal((await request("pricing.get", undefined, { origin: "https://evil.invalid" })).status, 403);
     assert.deepEqual((await request("pricing.get")).data, pricing);
+    const initialCoefficients = await request("pricing.coefficients");
+    assert.equal(initialCoefficients.status, 200);
+    assert.equal(initialCoefficients.data.tula, 1);
+    assert.equal((await request("pricing.coefficients", undefined, { pin: "wrong" })).status, 401);
     const inherited = (await request("pricing.settings.get", { cityId: "lipetsk" })).data;
     assert.equal(inherited.inherited, true); assert.equal(inherited.updatedAt, null);
     assert.deepEqual(inherited.pricing, pricing);
@@ -244,8 +316,10 @@ test("API: PIN, изоляция городов, создание, обновл�
     assert.equal((await request("pricing.settings.save", { ...payload, cityId: "default" })).status, 400);
     assert.equal((await request("pricing.settings.save", { ...payload, pricing: {} })).status, 400);
     payload.pricing.cleaning.wet.rate = 160;
+    payload.pricing.cleaning.general.rate = 130;
     const created = await request("pricing.settings.save", payload);
     assert.equal(created.status, 200); assert.equal(created.data.inherited, false);
+    assert.equal((await request("pricing.coefficients")).data.lipetsk, 1.3);
     assert.equal((await request("pricing.get", { cityId: "lipetsk" })).data.cleaning.wet.rate, 160);
     assert.equal((await request("pricing.get", { cityId: "sochi" })).data.cleaning.wet.rate, 100);
     assert.equal((await request("pricing.get", { cityId: "unknown" })).data.cleaning.wet.rate, 100);

@@ -3,6 +3,7 @@ export type PricingConfig = {
     wet: { rate: number; minimum: number };
     general: { rate: number; minimum: number };
     repair: { rate: number; minimum: number };
+    facadeGeneral: { standardRate: number; panoramicRate: number; minimum: number };
     allInclusive: { standardRate: number; panoramicRate: number; minimum: number };
   };
   windows: Record<string, { usual: number; repair: number }>;
@@ -36,6 +37,27 @@ export const CITIES = [
 ] as const;
 
 export type CityId = (typeof CITIES)[number]["id"];
+export type CityCoefficients = Partial<Record<CityId, number>>;
+export const MINIMUM_VISIT_PRICE = 6000;
+export const BASE_GENERAL_RATE = 230;
+
+export function cityPriceLabel(city: (typeof CITIES)[number], coefficients: CityCoefficients): string {
+  const coefficient = coefficients[city.id];
+  if (city.id === "unknown" || coefficient === undefined) return city.label;
+  const rounded = Math.round(coefficient * 100) / 100;
+  const approximate = Math.abs(rounded - coefficient) > 0.000001 ? "≈" : "";
+  return `${city.label} ${approximate}×${rounded.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}`;
+}
+
+export function cityPriceCoefficients(rows: ReadonlyArray<{ id: string; data: unknown }>): CityCoefficients {
+  const base = readPrice(rows.find((row) => row.id === "default")?.data, ["cleaning", "general", "rate"]);
+  if (!base || !Number.isFinite(base)) throw new Error("Общий тариф генеральной уборки должен быть положительным");
+  return Object.fromEntries(CITIES.map((city) => {
+    const rate = readPrice(rows.find((row) => row.id === city.id)?.data, ["cleaning", "general", "rate"]) ?? base;
+    if (!Number.isFinite(rate) || rate < 0) throw new Error("Некорректный городской тариф генеральной уборки");
+    return [city.id, rate / base];
+  }));
+}
 export type PricingCityId = Exclude<CityId, "unknown">;
 export type PricingSnapshot = { pricing: PricingConfig; updatedAt: string | null; inherited: boolean };
 export type PricingField = { path: string[]; label: string };
@@ -52,6 +74,9 @@ export const PRICING_GROUPS: PricingGroup[] = [
     { path: ["cleaning", "general", "minimum"], label: "Генеральная · минимальный заказ" },
     { path: ["cleaning", "repair", "rate"], label: "После ремонта · ₽/м²" },
     { path: ["cleaning", "repair", "minimum"], label: "После ремонта · минимальный заказ" },
+    { path: ["cleaning", "facadeGeneral", "standardRate"], label: "Фасадная генеральная с окнами · стандартные окна · ₽/м²" },
+    { path: ["cleaning", "facadeGeneral", "panoramicRate"], label: "Фасадная генеральная с окнами · панорамные окна · ₽/м²" },
+    { path: ["cleaning", "facadeGeneral", "minimum"], label: "Фасадная генеральная с окнами · минимальный заказ" },
     { path: ["cleaning", "allInclusive", "standardRate"], label: "Всё включено · стандартные окна · ₽/м²" },
     { path: ["cleaning", "allInclusive", "panoramicRate"], label: "Всё включено · панорамные окна · ₽/м²" },
     { path: ["cleaning", "allInclusive", "minimum"], label: "Всё включено · минимальный заказ" },
@@ -123,11 +148,31 @@ export function validatePricing(value: unknown): PricingConfig {
   for (const group of PRICING_GROUPS) {
     for (const field of group.fields) {
       const amount = readPrice(value, field.path);
-      if (amount === undefined || !Number.isFinite(amount) || amount < 0 || amount > 10_000_000) {
-        throw new Error(`Некорректная цена: ${field.label}. Допустимо от 0 до 10 000 000 ₽`);
+      const minimum = field.path[field.path.length - 1] === "minimum" ? MINIMUM_VISIT_PRICE : 0;
+      if (amount === undefined || !Number.isFinite(amount) || amount < minimum || amount > 10_000_000) {
+        throw new Error(`Некорректная цена: ${field.label}. Допустимо от ${minimum} до 10 000 000 ₽`);
       }
       setPrice(result, field.path, Math.round(amount * 100) / 100);
     }
   }
   return result;
+}
+
+// Read old saved rows during rollout; writes still require the complete schema.
+export function normalizePricing(value: unknown): PricingConfig {
+  const normalized = structuredClone(value);
+  if (normalized && typeof normalized === "object") {
+    const cleaning = (normalized as Record<string, unknown>).cleaning;
+    if (cleaning && typeof cleaning === "object" && !("facadeGeneral" in cleaning)) {
+      const rate = readPrice(normalized, ["cleaning", "general", "rate"]);
+      if (rate !== undefined && Number.isFinite(rate) && rate >= 0) {
+        (cleaning as Record<string, unknown>).facadeGeneral = {
+          standardRate: Math.round(370 * rate / BASE_GENERAL_RATE / 10) * 10,
+          panoramicRate: Math.round(450 * rate / BASE_GENERAL_RATE / 10) * 10,
+          minimum: MINIMUM_VISIT_PRICE,
+        };
+      }
+    }
+  }
+  return validatePricing(normalized);
 }
