@@ -521,7 +521,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
     return { lines, ...orderTotal, dryTotal, rate, minimum };
   }, [area, bathroom, dirt, dry, extras, glassType, innerCabinets, kitchenOnly, mold, panoramicPrice, pricing, remoteTrip, type, windowFilm, windows]);
 
-  const finalTotal = calculateClientPrice(manualPrice, calculation.total, calculation.lines.length > 0);
+  const finalTotal = calculateClientPrice(manualPrice, calculation.total);
   const hasManualPrice = manualPrice !== null && manualPrice !== calculation.total;
   const discountPercent = hasManualPrice && finalTotal < calculation.total && calculation.total > 0
     ? Math.round((1 - finalTotal / calculation.total) * 100)
@@ -884,8 +884,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
             <div className="mc-money">
               <label className="mc-money-row">
                 <span>Цена для клиента{discountPercent > 0 && <small>Скидка {discountPercent}% · −{fmt(calculation.total - finalTotal)}</small>}{markupPercent > 0 && <small className="markup">Наценка {markupPercent}% · +{fmt(finalTotal - calculation.total)}</small>}</span>
-                <input type="number" inputMode="numeric" min={calculation.lines.length ? MINIMUM_VISIT_PRICE : 0} value={(manualPrice ?? calculation.total) || ""} onBlur={() => { if (manualPrice !== null && manualPrice !== finalTotal) setManualPrice(finalTotal); }} onChange={(event) => { const value = Number(event.target.value); setManualPrice(value === calculation.total ? null : Math.max(0, value || 0)); }} />
-                {manualPrice !== null && manualPrice < finalTotal && <small>Минимальная цена выезда — {fmt(MINIMUM_VISIT_PRICE)}</small>}
+                <input type="number" inputMode="decimal" min={0} step="any" value={manualPrice ?? (calculation.total || "")} onChange={(event) => { const value = event.target.value; setManualPrice(value === "" ? null : Math.max(0, Number(value) || 0)); }} />
               </label>
               <label className="mc-money-row">
                 <span>Расходы<small className="muted">{expenses === null ? "65% от цены клиента · округлено до 100 ₽" : "Скорректировано вручную · очистите для автосуммы"}</small></span>
