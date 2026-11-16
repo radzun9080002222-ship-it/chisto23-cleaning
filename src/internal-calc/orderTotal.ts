@@ -7,6 +7,7 @@ export function calculateOrderTotal(lines: ReadonlyArray<{ sum: number }>, minim
   return { subtotal, total, minimumAdjustment: total - subtotal };
 }
 
-export function calculateClientPrice(manualPrice: number | null, priceListTotal: number, hasServices: boolean) {
-  return Math.max(manualPrice ?? priceListTotal, hasServices ? MINIMUM_VISIT_PRICE : 0);
+// The price-list minimum never overrides an explicitly agreed client price.
+export function calculateClientPrice(manualPrice: number | null, priceListTotal: number) {
+  return manualPrice ?? priceListTotal;
 }

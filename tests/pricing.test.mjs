@@ -52,15 +52,23 @@ test("Коэффициенты городов считаются по сохра
   assert.throws(() => cityPriceCoefficients([{ id: "default", data: { cleaning: { general: { rate: 0 } } } }]));
 });
 
-test("Любой непустой выезд и ручная цена не опускаются ниже 6000 ₽", () => {
+test("Минимум 6000 ₽ действует на прайс, ручная цена переопределяет его", () => {
   for (const hasCleaning of [true, false]) {
     assert.deepEqual(calculateOrderTotal([{ sum: 1500 }], 6000, hasCleaning), { subtotal: 1500, total: 6000, minimumAdjustment: 4500 });
     assert.equal(calculateOrderTotal([{ sum: 4500 }, { sum: 2000 }], 6000, hasCleaning).total, 6500);
   }
-  assert.equal(calculateClientPrice(1000, 15000, true), 6000);
-  assert.equal(calculateClientPrice(9000, 15000, true), 9000);
-  assert.equal(calculateClientPrice(null, 15000, true), 15000);
-  assert.equal(calculateClientPrice(null, 0, false), 0);
+  const priceListTotal = calculateOrderTotal([{ sum: 6000 }], 6000, false).total;
+  for (const manualPrice of [0, 1000, 5000, 5000.5, 6000, 9000]) {
+    const clientPrice = calculateClientPrice(manualPrice, priceListTotal);
+    assert.equal(clientPrice, manualPrice);
+  }
+  const discountedPrice = calculateClientPrice(5000, priceListTotal);
+  assert.equal(calculateDefaultExpenses(discountedPrice), 3300);
+  assert.equal(discountedPrice - calculateDefaultExpenses(discountedPrice), 1700);
+  assert.equal(calculateClientPrice(null, priceListTotal), 6000);
+  assert.equal(calculateClientPrice(9000, 15000), 9000);
+  assert.equal(calculateClientPrice(null, 15000), 15000);
+  assert.equal(calculateClientPrice(null, 0), 0);
   assert.equal(calculateOrderTotal([], 6000, true).total, 0);
 });
 
@@ -222,6 +230,10 @@ test("53 тарифа, города, округление и совместим�
   assert.deepEqual(CITIES.find((city) => city.id === "penza"), { id: "penza", label: "Пенза", timeZone: "Europe/Moscow" });
   assert.deepEqual(CITIES.find((city) => city.id === "yoshkar-ola"), { id: "yoshkar-ola", label: "Йошкар-Ола", timeZone: "Europe/Moscow" });
   assert.deepEqual(CITIES.find((city) => city.id === "naberezhnye-chelny"), { id: "naberezhnye-chelny", label: "Набережные Челны", timeZone: "Europe/Moscow" });
+  for (const [id, label] of [["arkhangelsk", "Архангельск"], ["murmansk", "Мурманск"], ["severodvinsk", "Северодвинск"]]) {
+    assert.deepEqual(CITIES.find((city) => city.id === id), { id, label, timeZone: "Europe/Moscow" });
+    assert.equal(validatePricingCityId(id), id);
+  }
   assert.throws(() => validateCityId("moscow"));
   assert.deepEqual(CITIES.find((city) => city.id === "tula"), { id: "tula", label: "Тула", timeZone: "Europe/Moscow" });
   assert.deepEqual(CITIES.find((city) => city.id === "kazan"), { id: "kazan", label: "Казань", timeZone: "Europe/Moscow" });
@@ -304,10 +316,12 @@ test("API: PIN, изоляция городов, создание, обновл�
     const kazan = (await request("pricing.settings.get", { cityId: "kazan" })).data;
     assert.equal(kazan.inherited, true); assert.equal(kazan.updatedAt, null);
     assert.deepEqual(kazan.pricing, pricing);
-    for (const cityId of ["volgograd", "kaluga", "balashikha", "tver", "kirov", "cheboksary", "kursk", "stavropol", "penza", "yoshkar-ola", "naberezhnye-chelny"]) {
+    for (const cityId of ["volgograd", "kaluga", "balashikha", "tver", "kirov", "cheboksary", "kursk", "stavropol", "penza", "yoshkar-ola", "naberezhnye-chelny", "arkhangelsk", "murmansk", "severodvinsk"]) {
       const city = (await request("pricing.settings.get", { cityId })).data;
       assert.equal(city.inherited, true); assert.equal(city.updatedAt, null);
       assert.deepEqual(city.pricing, pricing);
+      assert.deepEqual((await request("pricing.get", { cityId })).data, pricing);
+      assert.equal(initialCoefficients.data[cityId], 1);
     }
     assert.equal((await request("pricing.get", { cityId: "moscow" })).status, 400);
     assert.equal((await request("pricing.settings.get", { cityId: "moscow" })).status, 400);
