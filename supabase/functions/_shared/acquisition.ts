@@ -1,4 +1,4 @@
-export const ADVERTISING_CHANNELS = ["Яндекс Директ", "Авито", "Повторный клиент"] as const;
+export const ADVERTISING_CHANNELS = ["Яндекс Директ", "Яндекс Услуги", "Авито", "Повторный клиент"] as const;
 export const INTAKE_CHANNELS = ["Телефон", "Max", "Telegram", "WhatsUp", "Авито"] as const;
 
 export type AcquisitionChannels = {

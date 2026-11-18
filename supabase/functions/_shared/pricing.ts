@@ -18,6 +18,7 @@ export const CITIES = [
   { id: "arkhangelsk", label: "Архангельск", timeZone: "Europe/Moscow" },
   { id: "balashikha", label: "Балашиха", timeZone: "Europe/Moscow" },
   { id: "volgograd", label: "Волгоград", timeZone: "Europe/Moscow" },
+  { id: "volgograd-volzhsky", label: "Волгоград (Волжский)", timeZone: "Europe/Moscow" },
   { id: "voronezh", label: "Воронеж", timeZone: "Europe/Moscow" },
   { id: "yoshkar-ola", label: "Йошкар-Ола", timeZone: "Europe/Moscow" },
   { id: "kazan", label: "Казань", timeZone: "Europe/Moscow" },
@@ -31,6 +32,8 @@ export const CITIES = [
   { id: "penza", label: "Пенза", timeZone: "Europe/Moscow" },
   { id: "ryazan", label: "Рязань", timeZone: "Europe/Moscow" },
   { id: "salekhard", label: "Салехард", timeZone: "Asia/Yekaterinburg" },
+  { id: "saratov", label: "Саратов", timeZone: "Europe/Saratov" },
+  { id: "saratov-engels", label: "Саратов (Энгельс)", timeZone: "Europe/Saratov" },
   { id: "severodvinsk", label: "Северодвинск", timeZone: "Europe/Moscow" },
   { id: "sochi", label: "Сочи", timeZone: "Europe/Moscow" },
   { id: "stavropol", label: "Ставрополь", timeZone: "Europe/Moscow" },
@@ -87,10 +90,7 @@ export const PRICING_GROUPS: PricingGroup[] = [
   { title: "Окна", fields: [
     ["panoramic", "Панорамная створка"], ["standard", "Стандартная створка"],
     ["mini", "Мини-окно"], ["balconyDoor", "Балконная дверь"],
-  ].flatMap(([id, label]) => [
-    { path: ["windows", id, "usual"], label: `${label} · обычная мойка` },
-    { path: ["windows", id, "repair"], label: `${label} · после ремонта` },
-  ]) },
+  ].map(([id, label]) => ({ path: ["windows", id, "usual"], label: `${label} · обычная мойка и после ремонта` })) },
   { title: "Дополнительные услуги", fields: unitFields("extras", [
     ["fridge", "Холодильник стандарт"], ["fridge2", "Холодильник двухдверный"],
     ["oven", "Духовой шкаф внутри"], ["microwave", "Микроволновка"], ["hood", "Вытяжка"],
@@ -158,6 +158,8 @@ export function validatePricing(value: unknown): PricingConfig {
       setPrice(result, field.path, Math.round(amount * 100) / 100);
     }
   }
+  // Retain the old API shape while keeping one window tariff for every cleaning type.
+  for (const window of Object.values(result.windows)) window.repair = window.usual;
   return result;
 }
 

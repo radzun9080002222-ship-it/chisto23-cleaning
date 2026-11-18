@@ -471,6 +471,8 @@ body:has(.mc-app), body:has(.manager-lock), body:has(.vr-report) { padding-botto
 .mc-row.active .mc-row-text small { color: var(--accent-deep); }
 .mc-unit-price { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 600; }
 .mc-unit-price input { width: 84px; height: 32px; border: 1px solid var(--line); border-radius: 9px; background: #fff; padding: 0 8px; font-size: 14px; font-weight: 800; outline: none; }
+.mc-window-stickers { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.mc-window-stickers > .mc-toggle { flex: 1 1 220px; }
 
 /* Счётчик */
 .mc-counter { flex: 0 0 auto; display: grid; grid-template-columns: 40px 34px 40px; align-items: center; height: 42px; border: 1px solid var(--line); border-radius: 12px; background: #fff; overflow: hidden; }
