@@ -27,6 +27,7 @@ import { followUpSlot } from "../../supabase/functions/_shared/followUp";
 import { calculateDefaultExpenses } from "./expenses";
 import { calculateOrderTotal, calculateClientPrice } from "./orderTotal";
 import { buildBrigadierEstimate, buildOrderSummary } from "./estimateText";
+import { buildWindowLines } from "./windows";
 import { CLEANING_LABELS, cleaningTariff, cleaningLabel, includesWindows, type CleaningType } from "./cleaning";
 import {
   createCalendarEvent,
@@ -64,9 +65,9 @@ const DEFAULT_PRICING: PricingConfig = {
   },
   windows: {
     panoramic: { usual: 1000, repair: 1000 },
-    standard: { usual: 500, repair: 750 },
-    mini: { usual: 400, repair: 500 },
-    balconyDoor: { usual: 1200, repair: 1500 },
+    standard: { usual: 500, repair: 500 },
+    mini: { usual: 400, repair: 400 },
+    balconyDoor: { usual: 1200, repair: 1200 },
   },
   extras: {
     fridge: 900,
@@ -364,8 +365,10 @@ function ManagerCalculator({ pin }: { pin: string }) {
   const [glassType, setGlassType] = useState<"standard" | "panoramic">("standard");
   const [windows, setWindows] = useState<CounterState>({});
   const [panoramicOverride, setPanoramicPrice] = useState<number | null>(null);
-  const panoramicPrice = panoramicOverride ?? pricing.windows.panoramic[type === "repair" ? "repair" : "usual"];
+  const panoramicPrice = panoramicOverride ?? pricing.windows.panoramic.usual;
   const [windowFilm, setWindowFilm] = useState(false);
+  const [windowStickers, setWindowStickers] = useState(false);
+  const [stickerPrice, setStickerPrice] = useState(0);
   const [extras, setExtras] = useState<CounterState>({});
   const [dry, setDry] = useState<CounterState>({});
   const [bathroom, setBathroom] = useState(false);
@@ -482,16 +485,9 @@ function ManagerCalculator({ pin }: { pin: string }) {
       });
     }
 
-    WINDOWS.forEach((item) => {
-      const count = windows[item.id] || 0;
-      if (!count) return;
-      const base = item.id === "panoramic"
-        ? panoramicPrice
-        : pricing.windows[item.id][type === "repair" ? "repair" : "usual"];
-      const sum = count * base * (type === "repair" && windowFilm ? 2 : 1);
-      const label = `${item.label} × ${count}${type === "repair" && windowFilm ? " (плёнка ×2)" : ""}`;
-      lines.push({ label, brigadierLabel: label, sum, group: "windows" });
-    });
+    lines.push(...buildWindowLines(WINDOWS, windows, pricing.windows, {
+      panoramicPrice, film: type === "repair" && windowFilm, stickers: windowStickers, stickerPrice,
+    }));
 
     EXTRAS.forEach((item) => {
       const count = extras[item.id] || 0;
@@ -519,7 +515,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
     const orderTotal = calculateOrderTotal(lines, minimum, area > 0);
     const dryTotal = lines.filter((line) => line.group === "dry").reduce((sum, line) => sum + line.sum, 0);
     return { lines, ...orderTotal, dryTotal, rate, minimum };
-  }, [area, bathroom, dirt, dry, extras, glassType, innerCabinets, kitchenOnly, mold, panoramicPrice, pricing, remoteTrip, type, windowFilm, windows]);
+  }, [area, bathroom, dirt, dry, extras, glassType, innerCabinets, kitchenOnly, mold, panoramicPrice, pricing, remoteTrip, type, windowFilm, windowStickers, stickerPrice, windows]);
 
   const finalTotal = calculateClientPrice(manualPrice, calculation.total);
   const hasManualPrice = manualPrice !== null && manualPrice !== calculation.total;
@@ -719,6 +715,8 @@ function ManagerCalculator({ pin }: { pin: string }) {
     setWindows({});
     setPanoramicPrice(null);
     setWindowFilm(false);
+    setWindowStickers(false);
+    setStickerPrice(0);
     setExtras({});
     setDry({});
     setBathroom(false);
@@ -819,7 +817,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
           <Section id="windows" index="02" title="Окна" badge={sectionBadges.windows} open={openSections.windows} onToggle={() => toggleSection("windows")}>
             <div className="mc-rows mc-rows-grid">
               {WINDOWS.map((item) => {
-                const price = item.id === "panoramic" ? panoramicPrice : pricing.windows[item.id][type === "repair" ? "repair" : "usual"];
+                const price = item.id === "panoramic" ? panoramicPrice : pricing.windows[item.id].usual;
                 return (
                   <PriceRow key={item.id} label={item.label} value={windows[item.id] || 0} onChange={(value) => updateCounter(setWindows, item.id, value)}>
                     {item.id === "panoramic"
@@ -828,6 +826,10 @@ function ManagerCalculator({ pin }: { pin: string }) {
                   </PriceRow>
                 );
               })}
+            </div>
+            <div className="mc-window-stickers">
+              <Toggle checked={windowStickers} onChange={setWindowStickers} title="С наклейками" note="Доплата за каждую выбранную створку" />
+              <label className="mc-unit-price"><input aria-label="Доплата за наклейки на створке" type="number" inputMode="decimal" min={0} step="any" value={stickerPrice} onChange={(event) => setStickerPrice(Math.max(0, Number(event.target.value) || 0))} /><span>₽ / шт.</span></label>
             </div>
             {type === "repair" && <div className="mc-toggles single"><Toggle checked={windowFilm} onChange={setWindowFilm} title="Защитная плёнка на окнах" note="Стоимость мойки окон ×2" /></div>}
           </Section>

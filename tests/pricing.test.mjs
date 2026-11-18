@@ -9,6 +9,26 @@ import { calculateOrderTotal, calculateClientPrice } from "../src/internal-calc/
 import { buildBrigadierEstimate, buildOrderSummary } from "../src/internal-calc/estimateText.ts";
 import { ADVERTISING_CHANNELS, INTAKE_CHANNELS, hasAcquisitionChannels, validateAcquisitionChannels, withAcquisitionChannels } from "../supabase/functions/_shared/acquisition.ts";
 import { CLEANING_LABELS, cleaningTariff, cleaningLabel, includesWindows } from "../src/internal-calc/cleaning.ts";
+import { buildWindowLines } from "../src/internal-calc/windows.ts";
+
+test("Окна: единый тариф, ручная панорама, наклейки за створку и отдельная плёнка", () => {
+  const items = [{ id: "standard", label: "Стандартная створка" }, { id: "panoramic", label: "Панорамная створка" }];
+  const prices = { standard: { usual: 500, repair: 750 }, panoramic: { usual: 1000, repair: 1500 } };
+  const counts = { standard: 2, panoramic: 1 };
+  const options = { panoramicPrice: 1200, film: false, stickers: false, stickerPrice: 300 };
+  const ordinary = buildWindowLines(items, counts, prices, options);
+  assert.deepEqual(ordinary.map((line) => line.sum), [1000, 1200]);
+  const stickers = buildWindowLines(items, counts, prices, { ...options, stickers: true });
+  assert.deepEqual(stickers.map((line) => line.sum), [1000, 1200, 900]);
+  assert.match(stickers[2].label, /С наклейками: 3 шт. × 300 ₽/);
+  const film = buildWindowLines(items, counts, prices, { ...options, film: true, stickers: true });
+  assert.deepEqual(film.map((line) => line.sum), [2000, 2400, 900], "Плёнка не удваивает отдельную доплату за наклейки");
+  assert.deepEqual(buildWindowLines(items, {}, prices, { ...options, stickers: true }), []);
+  const free = buildWindowLines(items, counts, prices, { ...options, stickers: true, stickerPrice: 0 });
+  assert.equal(free[2].sum, 0);
+  assert.match(buildBrigadierEstimate(free.map((line) => line.label).join("\n"), "ИТОГО: 6000 ₽", "", 3900), /С наклейками/);
+  assert.equal(buildWindowLines(items, counts, prices, { ...options, stickers: true, stickerPrice: 100.5 })[2].sum, 301.5);
+});
 
 test("Новая уборка с окнами: ставки, остекление, название и общий минимум", () => {
   const tariffs = { cleaning: {
@@ -73,7 +93,7 @@ test("Минимум 6000 ₽ действует на прайс, ручная �
 });
 
 test("Оба канала обязательны, допустимы только варианты из списков", () => {
-  assert.deepEqual(ADVERTISING_CHANNELS, ["Яндекс Директ", "Авито", "Повторный клиент"]);
+  assert.deepEqual(ADVERTISING_CHANNELS, ["Яндекс Директ", "Яндекс Услуги", "Авито", "Повторный клиент"]);
   assert.deepEqual(INTAKE_CHANNELS, ["Телефон", "Max", "Telegram", "WhatsUp", "Авито"]);
   for (const advertisingChannel of ADVERTISING_CHANNELS) for (const intakeChannel of INTAKE_CHANNELS) {
     const channels = { advertisingChannel, intakeChannel };
@@ -203,8 +223,18 @@ test("Минимум применяется один раз к общей сум
   assert.equal(calculateOrderTotal([{ sum: 1000 }], 0, true).total, 6000);
 });
 
-const pricing = {};
-for (const group of PRICING_GROUPS) for (const field of group.fields) setPrice(pricing, field.path, field.path.at(-1) === "minimum" ? 6000 : 100);
+const fixture = {};
+for (const group of PRICING_GROUPS) for (const field of group.fields) setPrice(fixture, field.path, field.path.at(-1) === "minimum" ? 6000 : 100);
+const pricing = validatePricing(fixture);
+
+test("Один тариф окон сохраняется для обычной мойки и после ремонта", () => {
+  const legacy = structuredClone(pricing);
+  legacy.windows.standard.repair = 1500;
+  legacy.windows.standard.usual = 500;
+  assert.deepEqual(normalizePricing(legacy).windows.standard, { usual: 500, repair: 500 });
+  assert.deepEqual(validatePricing(legacy).windows.standard, { usual: 500, repair: 500 });
+  assert.equal(legacy.windows.standard.repair, 1500, "Исходный объект не мутирует");
+});
 
 test("Чтение старого прайса добавляет фасадную уборку, сохранение неполного прайса запрещено", () => {
   const legacy = structuredClone(pricing);
@@ -219,8 +249,8 @@ test("Чтение старого прайса добавляет фасадну
   assert.throws(() => validatePricing(lowMinimum), /6000/);
 });
 
-test("53 тарифа, города, округление и совместимость старого прайса", () => {
-  assert.equal(PRICING_GROUPS.flatMap((group) => group.fields).length, 53);
+test("49 настроек тарифов, города, округление и совместимость старого прайса", () => {
+  assert.equal(PRICING_GROUPS.flatMap((group) => group.fields).length, 49);
   for (const city of CITIES) assert.equal(validateCityId(city.id), city.id);
   assert.equal(CITIES[0].id, "unknown");
   const labels = CITIES.slice(1).map((city) => city.label);
@@ -234,6 +264,11 @@ test("53 тарифа, города, округление и совместим�
     assert.deepEqual(CITIES.find((city) => city.id === id), { id, label, timeZone: "Europe/Moscow" });
     assert.equal(validatePricingCityId(id), id);
   }
+  for (const [id, label, timeZone] of [["saratov", "Саратов", "Europe/Saratov"], ["saratov-engels", "Саратов (Энгельс)", "Europe/Saratov"], ["volgograd-volzhsky", "Волгоград (Волжский)", "Europe/Moscow"]]) {
+    assert.deepEqual(CITIES.find((city) => city.id === id), { id, label, timeZone });
+    assert.equal(validatePricingCityId(id), id);
+  }
+  assert.equal(localCalendarTime(new Date("2026-11-18T06:00:00Z"), "Europe/Saratov"), "2026-11-18T10:00:00");
   assert.throws(() => validateCityId("moscow"));
   assert.deepEqual(CITIES.find((city) => city.id === "tula"), { id: "tula", label: "Тула", timeZone: "Europe/Moscow" });
   assert.deepEqual(CITIES.find((city) => city.id === "kazan"), { id: "kazan", label: "Казань", timeZone: "Europe/Moscow" });
@@ -316,7 +351,7 @@ test("API: PIN, изоляция городов, создание, обновл�
     const kazan = (await request("pricing.settings.get", { cityId: "kazan" })).data;
     assert.equal(kazan.inherited, true); assert.equal(kazan.updatedAt, null);
     assert.deepEqual(kazan.pricing, pricing);
-    for (const cityId of ["volgograd", "kaluga", "balashikha", "tver", "kirov", "cheboksary", "kursk", "stavropol", "penza", "yoshkar-ola", "naberezhnye-chelny", "arkhangelsk", "murmansk", "severodvinsk"]) {
+    for (const cityId of ["volgograd", "kaluga", "balashikha", "tver", "kirov", "cheboksary", "kursk", "stavropol", "penza", "yoshkar-ola", "naberezhnye-chelny", "arkhangelsk", "murmansk", "severodvinsk", "saratov", "saratov-engels", "volgograd-volzhsky"]) {
       const city = (await request("pricing.settings.get", { cityId })).data;
       assert.equal(city.inherited, true); assert.equal(city.updatedAt, null);
       assert.deepEqual(city.pricing, pricing);
@@ -375,5 +410,9 @@ test("API: PIN, изоляция городов, создание, обновл�
     assert.equal((await request("calendar.create", { ...followUp, reminderPolicy: "order", advertisingChannel: "Повторный клиент", intakeChannel: "Телефон" })).status, 200);
     assert.ok(calendarEvents[2].description.includes("Рекламный канал: Повторный клиент\nКанал поступления: Телефон"));
     assert.deepEqual(calendarEvents[2].reminders, { useDefault: false, overrides: [] });
+    assert.equal((await request("calendar.create", { ...followUp, cityId: "saratov-engels", advertisingChannel: "Яндекс Услуги" })).status, 200);
+    assert.equal(calendarEvents[3].start.timeZone, "Europe/Saratov");
+    assert.equal(calendarEvents[3].extendedProperties.private.advertisingChannel, "Яндекс Услуги");
+    assert.ok(calendarEvents[3].description.includes("Рекламный канал: Яндекс Услуги"));
   } finally { globalThis.fetch = originalFetch; globalThis.Deno = originalDeno; }
 });
