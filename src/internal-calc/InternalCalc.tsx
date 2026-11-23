@@ -569,6 +569,9 @@ function ManagerCalculator({ pin }: { pin: string }) {
 
   const estimateRows = calculation.lines.map((line) => `• ${line.label} — ${fmt(line.sum)}`).join("\n");
   const channelsReady = hasAcquisitionChannels(client);
+  const needsConversionPhone = client.advertisingChannel === "Яндекс Директ" &&
+    (cityId === "tver" || cityId === "kirov" || cityId === "tula") &&
+    !/^\+79\d{9}$/.test(client.phone);
   const clientRows = [
     `Город: ${city.label}`,
     client.name && `Имя: ${client.name}`,
@@ -943,6 +946,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
                 ? <p className="mc-hint">Для города «Не определен» доступно только действие «Узнавали цену».</p>
                 : !calendarReady && calculation.lines.length > 0 && <p className="mc-hint">Для обычного события заполните дату, время, имя, телефон, адрес и оба канала. Для «Узнавали цену» обязательны только два канала.</p>}
               {!channelsReady && <p className="mc-hint">Выберите рекламный канал и канал поступления для отправки в календарь.</p>}
+              {needsConversionPhone && <p className="mc-hint">Для передачи «Узнавали цену» в Директ укажите мобильный телефон клиента. Запись в календаре доступна и без номера.</p>}
               {calendarMessage && <p className={`mc-status ${calendarStatus}`}><AlertCircle size={15} />{calendarMessage}</p>}
               {priceInquiryMessage && <p className={`mc-status ${priceInquiryStatus}`}><AlertCircle size={15} />{priceInquiryMessage}</p>}
               {followUpMessage && <p role="status" className="mc-status ok"><Check size={15} />{followUpMessage}{followUpLink && <a href={followUpLink} target="_blank" rel="noreferrer">Открыть в календаре</a>}</p>}
