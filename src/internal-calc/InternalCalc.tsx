@@ -157,6 +157,12 @@ const normalizePhone = (value: string) => {
   return subscriberNumber ? `+7${subscriberNumber}` : "";
 };
 
+const advertisingSites: Readonly<Partial<Record<(typeof CITIES)[number]["id"], readonly string[]>>> = {
+  kazan: ["vershina016.ru", "vershina16.ru"],
+  ryazan: ["vershina-62.ru"],
+  salekhard: ["vershina089.online"],
+};
+
 const formatDateTime = (date: string, time: string) => {
   const timeText = time
     ? `${Number(time.split(":")[0])}:${time.split(":")[1]}`
@@ -394,6 +400,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
     entrance: "",
     intercom: "",
     advertisingChannel: "",
+    advertisingSite: "",
     intakeChannel: "",
     note: "",
   });
@@ -569,8 +576,12 @@ function ManagerCalculator({ pin }: { pin: string }) {
 
   const estimateRows = calculation.lines.map((line) => `• ${line.label} — ${fmt(line.sum)}`).join("\n");
   const channelsReady = hasAcquisitionChannels(client);
-  const needsConversionPhone = client.advertisingChannel === "Яндекс Директ" &&
-    (cityId === "tver" || cityId === "kirov" || cityId === "tula") &&
+  const directChannel = client.advertisingChannel === "Яндекс Директ";
+  const siteOptions = directChannel ? advertisingSites[cityId] : undefined;
+  const selectedSite = siteOptions?.includes(client.advertisingSite) ? client.advertisingSite : "";
+  const siteLine = selectedSite ? `\nРекламный сайт: ${selectedSite}` : "";
+  const needsConversionPhone = directChannel && !isUnknownCity &&
+    cityId !== "abkhazia" && cityId !== "voronezh" && cityId !== "saratov-engels" &&
     !/^\+79\d{9}$/.test(client.phone);
   const clientRows = [
     `Город: ${city.label}`,
@@ -592,7 +603,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
     ? `ИТОГО ПО ПРАЙСУ: ${fmt(calculation.total)}\nЦЕНА ДЛЯ КЛИЕНТА: ${fmt(finalTotal)}${discountPercent > 0 ? ` (скидка ${discountPercent}%)` : ""}`
     : `ИТОГО: ${fmt(finalTotal)}`);
   const estimateText = `Расчёт стоимости уборки «Вершина»\n\n${estimateRows || "Позиции не выбраны"}\n\n${totalRows}\n\nДанные клиента:\n${clientRows}\n\nЦену фиксируем до начала работ. Оплата после приёмки по чек-листу.`;
-  const calendarDescription = `Расчёт стоимости уборки «Вершина»\n\n${estimateRows || "Позиции не выбраны"}\n\n${totalRows}\nРасходы: ${fmt(dealCosts)}\nЧистая прибыль: ${fmt(margin)}\n\nДанные клиента:\n${clientRows}\n\nЦену фиксируем до начала работ. Оплата после приёмки по чек-листу.`;
+  const calendarDescription = `Расчёт стоимости уборки «Вершина»\n\n${estimateRows || "Позиции не выбраны"}\n\n${totalRows}\nРасходы: ${fmt(dealCosts)}\nЧистая прибыль: ${fmt(margin)}\n\nДанные клиента:\n${clientRows}${siteLine}\n\nЦену фиксируем до начала работ. Оплата после приёмки по чек-листу.`;
   const brigadierText = buildBrigadierEstimate(estimateRows, totalRows, clientRows, otherExpenses);
 
   const copyEstimate = async () => {
@@ -660,7 +671,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
     const inquiryCalculation = estimateRows
       ? `Расчёт стоимости\n\n${estimateRows}\n\n${totalRows}`
       : "Расчёт не заполнялся";
-    const inquiryDescription = `Статистика конверсий: узнавали цену\nДата обращения: ${formatDateTime(inquiryDate, inquiryTime)}\n\n${inquiryCalculation}\n\nДанные клиента:\n${inquiryClientRows}`;
+    const inquiryDescription = `Статистика конверсий: узнавали цену\nДата обращения: ${formatDateTime(inquiryDate, inquiryTime)}\n\n${inquiryCalculation}\n\nДанные клиента:\n${inquiryClientRows}${siteLine}`;
     try {
       await createCalendarEvent(pin, {
         cityId,
@@ -734,7 +745,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
     setLeadCost(0);
     setTaxPercent(0);
     setShowMarginSettings(false);
-    setClient({ date: "", time: "", name: "", phone: "", address: "", floor: "", apartment: "", entrance: "", intercom: "", advertisingChannel: "", intakeChannel: "", note: "" });
+    setClient({ date: "", time: "", name: "", phone: "", address: "", floor: "", apartment: "", entrance: "", intercom: "", advertisingChannel: "", advertisingSite: "", intakeChannel: "", note: "" });
     setCopied(false);
     setBrigadierCopied(false);
     setCalendarStatus("idle");
@@ -759,7 +770,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
           <label className="mc-city">
             <MapPin size={16} aria-hidden="true" />
             <span className="mc-visually-hidden">Город</span>
-            <select value={cityId} onChange={(event) => setCityId(event.target.value as typeof cityId)}>
+            <select value={cityId} onChange={(event) => { setCityId(event.target.value as typeof cityId); setClientValue("advertisingSite", ""); }}>
               {CITIES.map((item) => <option key={item.id} value={item.id}>{cityPriceLabel(item, cityCoefficients)}</option>)}
             </select>
             <ChevronDown size={16} aria-hidden="true" />
@@ -928,6 +939,7 @@ function ManagerCalculator({ pin }: { pin: string }) {
               <label><span>Подъезд</span><input inputMode="numeric" value={client.entrance} onChange={(event) => setClientValue("entrance", event.target.value)} /></label>
               <label><span>Рекламный канал *</span><select required value={client.advertisingChannel} onChange={(event) => setClientValue("advertisingChannel", event.target.value)}><option value="">Выберите канал</option>{ADVERTISING_CHANNELS.map((channel) => <option key={channel} value={channel}>{channel}</option>)}</select></label>
               <label><span>Канал поступления *</span><select required value={client.intakeChannel} onChange={(event) => setClientValue("intakeChannel", event.target.value)}><option value="">Выберите канал</option>{INTAKE_CHANNELS.map((channel) => <option key={channel} value={channel}>{channel}</option>)}</select></label>
+              {siteOptions && <label className="wide"><span>Рекламный сайт, если известен</span><select value={selectedSite} onChange={(event) => setClientValue("advertisingSite", event.target.value)}><option value="">Неизвестно или другой сайт</option>{siteOptions.map((site) => <option key={site} value={site}>{site}</option>)}</select></label>}
               <label className="wide"><span>Дополнительно</span><textarea rows={3} placeholder="Парковка, питомцы, пожелания…" value={client.note} onChange={(event) => setClientValue("note", event.target.value)} /></label>
             </div>
             <div className="mc-actions">
