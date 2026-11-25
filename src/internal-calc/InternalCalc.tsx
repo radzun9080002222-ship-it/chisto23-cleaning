@@ -10,7 +10,6 @@ import {
   Clipboard,
   Eraser,
   LoaderCircle,
-  LockKeyhole,
   Minus,
   Plus,
   Settings2,
@@ -21,7 +20,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CITIES, MINIMUM_VISIT_PRICE, cityPriceLabel, type CityCoefficients, type CityId } from "../../supabase/functions/_shared/pricing";
 import { ADVERTISING_CHANNELS, INTAKE_CHANNELS, hasAcquisitionChannels, validateAcquisitionChannels } from "../../supabase/functions/_shared/acquisition";
 import PricingSettings from "./PricingSettings";
-import Achievements, { AchievementsBlock, BadgeDefs, needsCelebration, unseenCount } from "./Achievements";
+import ManagerAccess from "./ManagerAccess";
 import FollowUpDialog, { type FollowUpDetails } from "./FollowUpDialog";
 import { followUpSlot } from "../../supabase/functions/_shared/followUp";
 import { calculateDefaultExpenses } from "./expenses";
@@ -31,18 +30,13 @@ import { buildWindowLines } from "./windows";
 import { CLEANING_LABELS, cleaningTariff, cleaningLabel, includesWindows, type CleaningType } from "./cleaning";
 import {
   createCalendarEvent,
-  loadAchievements,
   loadPricing,
   loadCityCoefficients,
-  type AchievementsResult,
   type PricingConfig,
 } from "./managerApi";
 
 type CounterState = Record<string, number>;
 type SendStatus = "idle" | "sending" | "ok" | "error";
-
-const ACCESS_KEY = "chisto23_calc_pin";
-const CALC_PIN = import.meta.env.VITE_CALC_PIN || "3715";
 
 const CLEANING_DURATION: Record<CleaningType, { label: string; calendarHours: number }> = {
   wet: { label: "2–4 часа", calendarHours: 4 },
@@ -286,70 +280,10 @@ const Toggle = ({ checked, onChange, title, note }: { checked: boolean; onChange
   </label>
 );
 
-function PinGate({ onUnlock }: { onUnlock: (pin: string) => void }) {
-  const [pin, setPin] = useState("");
-  const [error, setError] = useState(false);
-
-  const submit = (event: React.FormEvent) => {
-    event.preventDefault();
-    if (pin !== CALC_PIN) {
-      setPin("");
-      setError(true);
-      return;
-    }
-    sessionStorage.setItem(ACCESS_KEY, pin);
-    onUnlock(pin);
-  };
-
-  return (
-    <main className="manager-lock">
-      <form onSubmit={submit} className="manager-lock-card">
-        <div className="manager-lock-icon"><LockKeyhole size={28} /></div>
-        <span className="manager-eyebrow">Закрытая страница</span>
-        <h1>Калькулятор менеджера</h1>
-        <p>Введите четырёхзначный PIN-код</p>
-        <label htmlFor="manager-pin">PIN-код</label>
-        <input
-          id="manager-pin"
-          autoFocus
-          type="password"
-          inputMode="numeric"
-          maxLength={4}
-          value={pin}
-          onChange={(event) => {
-            setPin(event.target.value.replace(/\D/g, "").slice(0, 4));
-            setError(false);
-          }}
-          aria-invalid={error}
-        />
-        {error && <div className="manager-form-error">Неверный PIN-код</div>}
-        <button className="manager-primary" type="submit" disabled={pin.length !== 4}>Открыть калькулятор</button>
-      </form>
-    </main>
-  );
-}
-
 function ManagerCalculator({ pin }: { pin: string }) {
   const [pricing, setPricing] = useState(DEFAULT_PRICING);
   const [pricingSource, setPricingSource] = useState<"loading" | "supabase" | "fallback">("loading");
   const [showPricingSettings, setShowPricingSettings] = useState(false);
-  const [showAchievements, setShowAchievements] = useState(false);
-  const [achievements, setAchievements] = useState<AchievementsResult | null>(null);
-  const [achievementsBadge, setAchievementsBadge] = useState(0);
-  const [achievementsError, setAchievementsError] = useState("");
-  useEffect(() => {
-    if (showAchievements) return;
-    let cancelled = false;
-    const load = () => loadAchievements(pin).then((result) => {
-      if (cancelled) return;
-      setAchievements(result); setAchievementsBadge(unseenCount(result)); setAchievementsError("");
-      // День открытия: праздничный экран показываем сам, один раз на устройство.
-      if (needsCelebration(result)) setShowAchievements(true);
-    }).catch((failure) => { if (!cancelled) setAchievementsError(failure instanceof Error ? failure.message : "Не удалось загрузить достижения"); });
-    load();
-    const timer = window.setInterval(load, 5 * 60 * 1000);
-    return () => { cancelled = true; window.clearInterval(timer); };
-  }, [pin, showAchievements]);
   const [pricingReload, setPricingReload] = useState(0);
   const [cityCoefficients, setCityCoefficients] = useState<CityCoefficients>({});
   useEffect(() => {
@@ -750,7 +684,6 @@ function ManagerCalculator({ pin }: { pin: string }) {
 
   return (
     <div className="mc-app">
-      <BadgeDefs />
       <header className="mc-header">
         <div className="mc-container mc-header-bar">
           <div className="mc-brand">
@@ -960,9 +893,6 @@ function ManagerCalculator({ pin }: { pin: string }) {
           </div>
         </aside>
 
-        <div className="mc-achievements-row">
-          <AchievementsBlock data={achievements} error={achievementsError} unseen={achievementsBadge} onOpen={() => setShowAchievements(true)} />
-        </div>
       </main>
 
       <div className={`mc-dock${sidebarInView ? " hidden" : ""}`} aria-hidden={sidebarInView}>
@@ -974,7 +904,6 @@ function ManagerCalculator({ pin }: { pin: string }) {
         <button type="button" tabIndex={sidebarInView ? -1 : 0} onClick={() => jumpTo("summary")}><Receipt size={18} />Смета{calculation.lines.length > 0 && <b>{calculation.lines.length}</b>}</button>
       </div>
 
-      {showAchievements && <Achievements pin={pin} initial={achievements} onClose={() => { setShowAchievements(false); setAchievementsBadge(0); }} />}
       {showPricingSettings && <PricingSettings pin={pin} initialCityId={cityId} onClose={() => setShowPricingSettings(false)} onSaved={() => setPricingReload((value) => value + 1)} coefficients={cityCoefficients} />}
       {showFollowUp && <FollowUpDialog cityLabel={city.label} timeZone={city.timeZone} onClose={() => setShowFollowUp(false)} onSend={sendFollowUp} />}
     </div>
@@ -982,6 +911,9 @@ function ManagerCalculator({ pin }: { pin: string }) {
 }
 
 export default function InternalCalc() {
-  const [pin, setPin] = useState(() => typeof window === "undefined" ? "" : sessionStorage.getItem(ACCESS_KEY) || "");
-  return pin === CALC_PIN ? <ManagerCalculator pin={pin} /> : <PinGate onUnlock={setPin} />;
+  return (
+    <ManagerAccess title="Калькулятор менеджера" buttonLabel="Открыть калькулятор">
+      {(pin) => <ManagerCalculator pin={pin} />}
+    </ManagerAccess>
+  );
 }

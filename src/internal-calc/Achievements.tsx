@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { LoaderCircle, Lock, Trophy, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { LoaderCircle, Lock, Trophy } from "lucide-react";
 import { loadAchievements, type Achievement, type AchievementsResult } from "./managerApi";
 
 const SEEN_KEY = "vershina_ach_seen";
@@ -8,16 +8,14 @@ const CELEBRATED_KEY = "vershina_ach_celebrated";
 const readStore = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
 const writeStore = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* приватный режим */ } };
 
-export const seenIds = () => new Set<string>(JSON.parse(readStore(SEEN_KEY) || "[]"));
-/** Праздничный экран ещё не показывали на этом устройстве. */
-export const needsCelebration = (data: AchievementsResult | null) =>
-  Boolean(data?.revealed && data.revealedBy && readStore(CELEBRATED_KEY) !== data.revealedBy.id);
-
-export const unseenCount = (data: AchievementsResult | null) => {
-  if (!data?.revealed) return 0;
-  const seen = seenIds();
-  return data.achievements.filter((item) => item.done && !seen.has(item.id)).length;
-};
+function seenIds() {
+  try {
+    const ids: unknown = JSON.parse(readStore(SEEN_KEY) || "[]");
+    return new Set<string>(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : []);
+  } catch {
+    return new Set<string>();
+  }
+}
 
 const fmt = (value: number) => Math.round(value).toLocaleString("ru-RU");
 const short = (value: number) => value >= 1e6 ? `${(value / 1e6).toFixed(2).replace(".", ",")} млн` : value >= 1e4 ? `${Math.round(value / 1e3)} тыс` : fmt(value);
@@ -47,7 +45,7 @@ const GLYPHS: Record<string, string> = {
   q: '<text x="12" y="18" text-anchor="middle" font-size="16" font-weight="800" fill="currentColor" font-family="Manrope, Arial, sans-serif">?</text>',
 };
 
-export function BadgeDefs() {
+function BadgeDefs() {
   return (
     <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
       <defs>
@@ -61,7 +59,7 @@ export function BadgeDefs() {
   );
 }
 
-export function Badge({ item, size = 56, style }: { item: Achievement; size?: number; style?: React.CSSProperties }) {
+function Badge({ item, size = 56, style }: { item: Achievement; size?: number; style?: React.CSSProperties }) {
   const on = item.done;
   const glyph = on ? GLYPHS[item.glyph] : item.hidden ? GLYPHS.q : GLYPHS.lock;
   return (
@@ -98,7 +96,8 @@ function Celebration({ data, onDone }: { data: AchievementsResult; onDone: () =>
   const cityStages = data.achievements.filter((item) => item.done && item.cat === "Восхождение").length;
   const shown = unlocked.slice(0, 36);
   return (
-    <div className="ach-celebrate" role="dialog" aria-modal="true" aria-labelledby="ach-celebrate-title">
+    <div className="ach-celebrate" role="dialog" aria-modal="true" aria-labelledby="ach-celebrate-title"
+      onKeyDown={(event) => { if (event.key === "Escape") onDone(); }}>
       <div className="ach-celebrate-card">
         <Trophy className="ach-celebrate-icon" size={40} aria-hidden="true" />
         <p className="ach-eyebrow">Достижения открыты</p>
@@ -119,37 +118,39 @@ function Celebration({ data, onDone }: { data: AchievementsResult; onDone: () =>
   );
 }
 
-export default function Achievements({ pin, initial, onClose }: { pin: string; initial: AchievementsResult | null; onClose: () => void }) {
-  const [data, setData] = useState<AchievementsResult | null>(initial);
+export default function Achievements({ pin }: { pin: string }) {
+  const [data, setData] = useState<AchievementsResult | null>(null);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(!initial);
-  const [filter, setFilter] = useState<string>(() => readStore("vershina_ach_filter") || "all");
-  const [celebrate, setCelebrate] = useState(false);
-  const [fresh] = useState(() => seenIds());
-  const panel = useRef<HTMLDivElement>(null);
+  const [retry, setRetry] = useState(0);
+  const [filter, setFilter] = useState(() => readStore("vershina_ach_filter") || "all");
+  const [celebratedId, setCelebratedId] = useState(() => readStore(CELEBRATED_KEY));
+  const [fresh] = useState(seenIds);
+  const reveal = data?.revealed ? data.revealedBy : null;
 
   useEffect(() => {
     let cancelled = false;
-    loadAchievements(pin).then((result) => { if (!cancelled) setData(result); })
-      .catch((failure) => { if (!cancelled && !initial) setError(failure instanceof Error && /Неизвестное действие/.test(failure.message) ? "Достижения ещё не включены на сервере. Нужно обновить функцию manager-calc." : failure instanceof Error ? failure.message : "Не удалось загрузить достижения"); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [pin]);
-
-  useEffect(() => {
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    panel.current?.focus();
-    const keydown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    document.addEventListener("keydown", keydown);
-    return () => { document.body.style.overflow = overflow; document.removeEventListener("keydown", keydown); };
-  }, [onClose]);
-
-  useEffect(() => {
-    if (!data?.revealed || !data.revealedBy) return;
-    if (readStore(CELEBRATED_KEY) !== data.revealedBy.id) setCelebrate(true);
-    writeStore(SEEN_KEY, JSON.stringify(data.achievements.filter((item) => item.done).map((item) => item.id)));
-  }, [data]);
+    let loading = false;
+    const load = async () => {
+      if (loading) return;
+      loading = true;
+      try {
+        const result = await loadAchievements(pin);
+        if (cancelled) return;
+        setData(result);
+        setError("");
+        if (result.revealed && result.revealedBy) {
+          writeStore(SEEN_KEY, JSON.stringify(result.achievements.filter((item) => item.done).map((item) => item.id)));
+        }
+      } catch (failure) {
+        if (!cancelled) setError(failure instanceof Error ? failure.message : "Не удалось загрузить достижения");
+      } finally {
+        loading = false;
+      }
+    };
+    void load();
+    const timer = window.setInterval(load, 5 * 60 * 1000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [pin, retry]);
 
   const view = useMemo(() => {
     if (!data) return null;
@@ -170,18 +171,21 @@ export default function Achievements({ pin, initial, onClose }: { pin: string; i
   const count = (key: string) => !view ? 0 : key === "all" ? view.list.filter((item) => item.cat !== "Восхождение").length : key === "done" ? view.done.length : key === "locked" ? view.locked.length : view.list.filter((item) => item.cat === key).length;
 
   return (
-    <div className="ach-overlay">
-      <div className="ach-shell" ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Достижения Вершины">
+    <main className="ach-page">
+      <BadgeDefs />
+      <div className="ach-shell">
         <header className="ach-top">
           <div className="ach-brand">
             <Trophy size={22} aria-hidden="true" />
             <div><h1>Достижения</h1><p>Вся сеть «Вершины»</p></div>
           </div>
-          <button type="button" className="ach-close" onClick={onClose} aria-label="Закрыть достижения"><X size={20} /></button>
         </header>
 
-        {loading && !data && <div className="ach-state"><LoaderCircle className="spin" size={22} /> Считаем заказы из календаря…</div>}
-        {error && !data && <div className="ach-state ach-error">{error}</div>}
+        {!error && !data && <div className="ach-state" role="status"><LoaderCircle className="spin" size={22} aria-hidden="true" /> Загружаем достижения…</div>}
+        {error && <div className="ach-state ach-error" role="status">
+          <span>{data ? `Не удалось обновить данные. ${error}` : error}</span>
+          <button type="button" className="ach-retry" onClick={() => { setError(""); setRetry((value) => value + 1); }}>Повторить</button>
+        </div>}
 
         {data && view && (
           <div className="ach-body">
@@ -295,104 +299,10 @@ export default function Achievements({ pin, initial, onClose }: { pin: string; i
           </div>
         )}
       </div>
-      {celebrate && data && <Celebration data={data} onDone={() => { setCelebrate(false); if (data.revealedBy) writeStore(CELEBRATED_KEY, data.revealedBy.id); }} />}
-    </div>
-  );
-}
-
-const TIER_RANK = { summit: 0, gold: 1, silver: 2, bronze: 3 } as const;
-
-/** Сколько иконок помещается в ряд: следим за шириной контейнера. */
-function useRowCapacity() {
-  const ref = useRef<HTMLDivElement>(null);
-  const [state, setState] = useState({ capacity: 8, size: 56 });
-  useEffect(() => {
-    const element = ref.current;
-    if (!element || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(([entry]) => {
-      const width = entry.contentRect.width;
-      const size = width < 420 ? 46 : 56;
-      const gap = width < 420 ? 6 : 8;
-      setState({ capacity: Math.max(3, Math.floor((width + gap) / (size + gap))), size });
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-  return { ref, ...state };
-}
-
-function IconRow({ items, total, size, capacity, onOpen }: { items: Achievement[]; total: number; size: number; capacity: number; onOpen: () => void }) {
-  const fits = total <= capacity;
-  const shown = items.slice(0, fits ? capacity : capacity - 1);
-  const rest = total - shown.length;
-  return (
-    <div className="achb-row">
-      {shown.map((item) => {
-        const label = item.done ? `${item.name} — ${item.desc}${item.date ? ` · ${fdate(item.date)}` : ""}` : title(item);
-        return <button key={item.id} type="button" className="achb-icon" title={label} aria-label={label} onClick={onOpen}><Badge item={item} size={size} /></button>;
-      })}
-      {rest > 0 && <button type="button" className="achb-more" style={{ width: size, height: size }} onClick={onOpen} aria-label={`Ещё ${rest}`}>+{rest}</button>}
-    </div>
-  );
-}
-
-/** Постоянный блок достижений в калькуляторе, в формате Steam. */
-export function AchievementsBlock({ data, error, unseen, onOpen }: { data: AchievementsResult | null; error: string; unseen: number; onOpen: () => void }) {
-  const row = useRowCapacity();
-  const view = useMemo(() => {
-    if (!data) return null;
-    const list = data.achievements;
-    const done = list.filter((item) => item.done);
-    // Недавние: по дате открытия, при равной дате — более редкие выше. Лагеря городов в ряд не берём.
-    const recent = done.filter((item) => item.cat !== "Восхождение")
-      .sort((a, b) => (b.date || "").localeCompare(a.date || "") || TIER_RANK[a.tier] - TIER_RANK[b.tier]);
-    const locked = list.filter((item) => !item.done && item.cat !== "Восхождение")
-      .sort((a, b) => ((b.progress ? b.progress[0] / b.progress[1] : 0) - (a.progress ? a.progress[0] / a.progress[1] : 0)) || Number(a.hidden) - Number(b.hidden));
-    return { list, done, latest: recent[0] || null, recent: recent.slice(1), locked, lockedTotal: list.length - done.length };
-  }, [data]);
-
-  return (
-    <section className="achb" id="mc-achievements" aria-labelledby="achb-title">
-      <h2 id="achb-title" className="achb-label">Достижения</h2>
-      <div className="achb-panel">
-        {!view && <div className="achb-state">{error ? error : <><LoaderCircle className="spin" size={16} /> Загружаем достижения…</>}</div>}
-        {view && data && (
-          <>
-            <div className="achb-top">
-              <div className="achb-got">Вы получили <b>{view.done.length}</b> из <b>{view.list.length}</b> <span>({Math.round(view.done.length / view.list.length * 100)}%)</span></div>
-              <div className="achb-bar"><i style={{ width: `${view.done.length / view.list.length * 100}%` }} /></div>
-            </div>
-            <div className="achb-body" ref={row.ref}>
-              {data.revealed && view.latest ? (
-                <>
-                  <button type="button" className="achb-latest" onClick={onOpen}>
-                    <Badge item={view.latest} size={row.size} />
-                    <span>
-                      <b>{view.latest.name}</b>
-                      <small>{view.latest.desc}</small>
-                      {view.latest.date && <em>Получено {fdate(view.latest.date)}</em>}
-                    </span>
-                  </button>
-                  {view.recent.length > 0 && <IconRow items={view.recent} total={view.done.length - 1} size={row.size} capacity={row.capacity} onOpen={onOpen} />}
-                </>
-              ) : (
-                <div className="achb-teaser">
-                  <Lock size={20} aria-hidden="true" />
-                  <span><b>Все достижения пока закрыты</b><small>Первый выполненный заказ откроет разом всё, что «Вершина» уже заработала.</small></span>
-                </div>
-              )}
-            </div>
-            <div className="achb-locked">
-              <div className="achb-sub">Неполученные достижения</div>
-              <IconRow items={view.locked} total={view.lockedTotal} size={row.size} capacity={row.capacity} onOpen={onOpen} />
-            </div>
-            <div className="achb-foot">
-              {unseen > 0 && <span className="achb-new">+{unseen} новых</span>}
-              <button type="button" className="achb-link" onClick={onOpen}>Мои достижения</button>
-            </div>
-          </>
-        )}
-      </div>
-    </section>
+      {data && reveal && celebratedId !== reveal.id && <Celebration data={data} onDone={() => {
+        setCelebratedId(reveal.id);
+        writeStore(CELEBRATED_KEY, reveal.id);
+      }} />}
+    </main>
   );
 }
