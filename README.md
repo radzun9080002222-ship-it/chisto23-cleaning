@@ -101,8 +101,9 @@ npm run build
 
 ## Достижения
 
-Кубок в шапке `/calc` открывает систему достижений «Вершины» в стиле Steam:
-восхождение по городам, экспансия, заказы, деньги, рекорды и секретные ачивки.
+Система достижений «Вершины» открывается во вкладке [«Достижения» в CRM](https://vershina-main.ru/#/achievements).
+CRM показывает [страницу достижений на chisto23.ru](https://chisto23.ru/achievements/).
+В этой вкладке используется тот же PIN, что в калькуляторе.
 Расчёт — `supabase/functions/_shared/achievements.ts`, серверное действие
 `achievements.get`, экран — `src/internal-calc/Achievements.tsx`.
 
