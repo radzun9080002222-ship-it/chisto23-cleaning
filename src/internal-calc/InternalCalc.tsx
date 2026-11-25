@@ -80,7 +80,7 @@ const DEFAULT_PRICING: PricingConfig = {
     seams: 3000,
   },
   dry: {
-    sofa: 4500,
+    sofa: 4900,
     corner: 5900,
     sofa3: 7300,
     mattress1: 1500,
@@ -92,7 +92,7 @@ const DEFAULT_PRICING: PricingConfig = {
     bench: 1200,
     pouf: 550,
     chair: 500,
-    rug: 600,
+    rug: 400,
     carpet: 550,
   },
   special: { bathroom: 6000, mold: 1500, remoteTrip: 2000, kitchen: 6000, cabinet: 1000 },
