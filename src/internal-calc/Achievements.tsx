@@ -53,7 +53,7 @@ function BadgeDefs() {
         <linearGradient id="ach-silver" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#eef3f7" /><stop offset="1" stopColor="#7d8d9a" /></linearGradient>
         <linearGradient id="ach-gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ffe09a" /><stop offset="1" stopColor="#b07a26" /></linearGradient>
         <linearGradient id="ach-summit" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#d9f3ff" /><stop offset=".5" stopColor="#7fc6e6" /><stop offset="1" stopColor="#2d6f96" /></linearGradient>
-        <linearGradient id="ach-off" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#35485a" /><stop offset="1" stopColor="#1c2833" /></linearGradient>
+        <linearGradient id="ach-off" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--blue-soft)" /><stop offset="1" stopColor="var(--line-2)" /></linearGradient>
       </defs>
     </svg>
   );
@@ -64,9 +64,9 @@ function Badge({ item, size = 56, style }: { item: Achievement; size?: number; s
   const glyph = on ? GLYPHS[item.glyph] : item.hidden ? GLYPHS.q : GLYPHS.lock;
   return (
     <svg className="ach-badge" width={size} height={size} viewBox="0 0 56 56" role="img" aria-label={on ? `Получено: ${item.name}` : "Не получено"} style={style}>
-      <path d="M28 2 L50.5 15 V41 L28 54 L5.5 41 V15 Z" fill={on ? `url(#ach-${item.tier})` : "url(#ach-off)"} stroke={on ? (item.tier === "summit" ? "#bfe8fb" : "rgba(255,255,255,.35)") : "#2e3f4f"} strokeWidth="1.5" />
-      <path d="M28 7 L46 17.4 V38.6 L28 49 L10 38.6 V17.4 Z" fill="none" stroke={on ? "rgba(0,0,0,.18)" : "rgba(255,255,255,.04)"} strokeWidth="1.2" />
-      <g transform="translate(16 16)" style={{ color: on ? "#1a2530" : "#6f8394" }} dangerouslySetInnerHTML={{ __html: glyph }} />
+      <path d="M28 2 L50.5 15 V41 L28 54 L5.5 41 V15 Z" fill={on ? `url(#ach-${item.tier})` : "url(#ach-off)"} stroke={on ? (item.tier === "summit" ? "#bfe8fb" : "rgba(255,255,255,.35)") : "var(--line)"} strokeWidth="1.5" />
+      <path d="M28 7 L46 17.4 V38.6 L28 49 L10 38.6 V17.4 Z" fill="none" stroke={on ? "rgba(0,0,0,.18)" : "var(--line)"} strokeWidth="1.2" />
+      <g transform="translate(16 16)" style={{ color: on ? "#1a2530" : "var(--muted)" }} dangerouslySetInnerHTML={{ __html: glyph }} />
     </svg>
   );
 }
@@ -79,11 +79,11 @@ function Ridge({ level }: { level: number }) {
   const line = "M0 56 L14 50 L40 46 L70 42 L96 38 L128 33 L150 30 L186 22 L214 17 L244 10 L260 8";
   return (
     <svg className="ach-ridge" viewBox="0 0 260 60" aria-hidden="true">
-      <path d={`${line} L260 56 Z`} fill="#223241" />
-      <path d={line} fill="none" stroke="#3a5164" strokeWidth="1.5" />
+      <path d={`${line} L260 56 Z`} fill="var(--blue-soft)" />
+      <path d={line} fill="none" stroke="var(--blue)" strokeWidth="1.5" />
       {xs.map((x, index) => {
         const on = index < level, current = index === level;
-        return <circle key={x} cx={x} cy={ys[index]} r={on ? 5.5 : 4.5} fill={on ? (index === 4 ? "#7fc6e6" : "#e4b75c") : "#18242f"} stroke={on ? "#fff" : current ? "#e0a14f" : "#4a6073"} strokeWidth="1.5" className={current ? "ach-pulse" : undefined} />;
+        return <circle key={x} cx={x} cy={ys[index]} r={on ? 5.5 : 4.5} fill={on ? (index === 4 ? "var(--blue)" : "var(--accent)") : "var(--paper)"} stroke={on ? "var(--paper)" : current ? "var(--ach-gold)" : "var(--blue)"} strokeWidth="1.5" className={current ? "ach-pulse" : undefined} />;
       })}
     </svg>
   );
@@ -192,8 +192,10 @@ export default function Achievements({ pin }: { pin: string }) {
             <section className="ach-summary">
               <div className="ach-panel">
                 <h2 className="ach-label">Достижения</h2>
-                <div className="ach-got">Получено <b>{view.done.length}</b> из <b>{view.list.length}</b> <span>({Math.round(view.done.length / view.list.length * 100)}%)</span></div>
-                <div className="ach-bar"><i style={{ width: `${view.done.length / view.list.length * 100}%` }} /></div>
+                <div className="ach-progress">
+                  <div className="ach-got">Получено <b>{view.done.length}</b> из <b>{view.list.length}</b> <span>({Math.round(view.done.length / view.list.length * 100)}%)</span></div>
+                  <div className="ach-bar"><i style={{ width: `${view.done.length / view.list.length * 100}%` }} /></div>
+                </div>
                 {!data.revealed && (
                   <div className="ach-teaser">
                     <Lock size={18} aria-hidden="true" />
